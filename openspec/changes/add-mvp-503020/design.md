@@ -207,6 +207,6 @@ src/
 3. Produção: `npx prisma migrate deploy` com `DIRECT_URL` da branch `main`
 
 ## Open Questions
-- Better Auth ou Neon Auth?
-- Lançamento retroativo (dias anteriores) entra no MVP ou só o dia atual?
-- Mostrar "dias restantes no mês × quanto posso gastar por dia" no painel? (forte para iniciante)
+- Better Auth ou Neon Auth? Resposta: Better Auth.
+- Lançamento retroativo (dias anteriores) entra no MVP ou só o dia atual? Resposta: Teremos sim, entra no MVP.
+- Mostrar "dias restantes no mês × quanto posso gastar por dia" no painel? (forte para iniciante) Reposta: Sim, vamos adicionar.
