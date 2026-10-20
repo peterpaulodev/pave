@@ -66,6 +66,11 @@ describe("cross-user data isolation (integration)", () => {
   });
 
   it("user A's data is unaffected by user B's own (empty) cycle", async () => {
+    // getOrCreateCycle needs a positive income to seed a new cycle — in
+    // the real app this is always true by the time it's called (the
+    // (app) layout guard requires onboarding, which sets it), but this
+    // test calls it directly for a user who hasn't onboarded yet.
+    await upsertUserSettings(userB, { defaultIncomeCents: 300000 });
     const cycleB = await getOrCreateCycle(userB, period);
     expect(cycleB.id).not.toBe(cycleAId);
     expect(await listExpenses(userB, cycleB.id)).toEqual([]);
