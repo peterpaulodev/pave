@@ -7,7 +7,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.ts"],
-    exclude: ["node_modules", ".next", "e2e/**"],
+    // server/** has its own config (vitest.integration.config.ts, run via
+    // `pnpm test:integration`) — those tests hit the real Neon database.
+    exclude: ["node_modules", ".next", "e2e/**", "server/**"],
     setupFiles: ["./vitest.setup.ts"],
   },
 });

@@ -11,10 +11,10 @@ import {
   upsertUserSettings,
 } from "./queries";
 
-// These hit the real Neon database configured via DATABASE_URL (there is
-// no local/in-memory substitute for Postgres here). Skipped when it isn't
-// set, e.g. a fresh clone before `.env.local` is configured.
-describe.skipIf(!process.env.DATABASE_URL)("server/queries (integration)", () => {
+// These hit the real Neon database configured via DATABASE_URL — run via
+// `pnpm test:integration`, never as part of `pnpm test`. The dev/test
+// branch guard lives in vitest.integration.setup.ts.
+describe("server/queries (integration)", () => {
   const userId = `test-${randomUUID()}`;
   const period = "2026-01";
 

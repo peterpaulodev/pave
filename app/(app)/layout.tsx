@@ -1,11 +1,26 @@
+import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/shell/AppHeader";
 import { BottomNav } from "@/components/shell/BottomNav";
+import { InstallPwaPrompt } from "@/components/install-pwa-prompt";
+import { getSessionUserOrRedirect } from "@/lib/auth/session";
+import { getUserSettings } from "@/server/queries";
 
-export default function AppShellLayout({
+export const dynamic = "force-dynamic";
+
+export default async function AppShellLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { id: userId } = await getSessionUserOrRedirect();
+  const settings = await getUserSettings(userId);
+
+  // Inverse of the guard in app/onboarding/page.tsx: every page under this
+  // group requires onboarding to be done first.
+  if (!settings?.onboardedAt) {
+    redirect("/onboarding");
+  }
+
   return (
     <>
       <AppHeader />
@@ -15,6 +30,7 @@ export default function AppShellLayout({
         </div>
       </main>
       <BottomNav />
+      <InstallPwaPrompt />
     </>
   );
 }

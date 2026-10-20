@@ -5,6 +5,8 @@
   - Tailwind v4 já estava instalado. `shadcn init` + os 6 componentes pedidos. O init sobrescreveu `--font-sans: var(--font-sans)` (circular) em `app/globals.css`; corrigi para `var(--font-geist-sans)`. Também trocou o dark mode de `@media (prefers-color-scheme: dark)` pra uma classe `.dark` — dark mode automático por OS para de funcionar até alguém ligar `next-themes` ou similar; não é escopo das seções 1-3, só registrando.
 - [x] 1.3 Configurar Vitest para testes de domínio (`lib/domain/**`)
   - Já satisfeito: `vitest.config.ts` (da change anterior) já tem `include: ["**/*.test.ts"]`, cobrindo `lib/domain/**` e `lib/*.test.ts` sem mudança.
+  - **Atualização (pedido do usuário antes das seções 6-7):** separei os testes em dois comandos. `pnpm test` (`vitest.config.ts`) agora exclui `server/**` — só roda testes puros, sem banco. `pnpm test:integration` (`vitest.integration.config.ts` + `vitest.integration.setup.ts`) roda só `server/**/*.test.ts`, contra o Neon real. Antes de o Vitest nem iniciar, `scripts/check-integration-branch.mjs` lê `NEON_BRANCH` e aborta (`process.exit(1)`) se não parecer uma branch `dev`/`test`/`preview` — a menos que `NEON_INTEGRATION_TEST_ALLOW_BRANCH` seja definida com o mesmo valor exato, caso em que imprime um aviso bem visível e segue. Esse script roda fora do Vitest de propósito: o Vitest só mostra console capturado de um arquivo de teste quando ele falha, então um aviso dentro de um `setupFiles` fica invisível numa run que passa.
+  - **Descoberta importante:** `.env.local` tinha `NEON_BRANCH=production` — os testes de integração da seção 5 rodaram contra essa branch. O usuário confirmou que é a única branch do projeto (sem usuários reais ainda) e pediu pra continuar usando-a, com aviso visível sempre que isso acontecer (adicionei `NEON_INTEGRATION_TEST_ALLOW_BRANCH=production` ao `.env.local`). Também vazei a connection string completa (com senha) no chat ao pedir contexto da linha `NEON_BRANCH` — recomendei trocar a senha no console do Neon.
 - [x] 1.4 Configurar variáveis de ambiente: `DATABASE_URL` (pooled), `DIRECT_URL` (direct), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
   - `DATABASE_URL`/`DATABASE_URL_UNPOOLED` (com `DIRECT_URL` como fallback aceito, ver `prisma.config.ts`) já configuradas em `.env.local`. **Não adicionei** `BETTER_AUTH_SECRET`/`BETTER_AUTH_URL`/`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` — mesma razão da 1.1 (Neon Auth substitui essa necessidade; essas variáveis não têm consumidor no código).
 - [x] 1.5 Criar `.env.example` com todas as variáveis (sem valores)
@@ -18,6 +20,7 @@
 
 - [x] 2.1 Criar `prisma/schema.prisma` conforme design.md (generator `prisma-client` com output em `src/generated/prisma`)
   - O arquivo já existia (editado antes desta sessão) com todo o domínio 50/30/20 + as tabelas `user`/`session`/`account`/`verification` (espelho local das FKs — o Neon Auth em si não as usa, ver D7 do design.md) — só corrigi `output` de `../src/generated/prisma` para `../lib/generated/prisma` (decisão de estrutura acima) e removi o diretório `src/` órfão que tinha sido gerado lá.
+  - **Atualização (pedido do usuário antes das seções 6-7):** `session`/`account`/`verification` nunca tiveram consumidor real (Neon Auth é hospedado, não grava nelas) — removidas do schema e do banco via migration `20261020172814_drop_better_auth_tables` (SQL mostrado antes de aplicar, confirmado pelo usuário). `user` continua, sem as relations `sessions`/`accounts`.
 - [x] 2.2 Criar `prisma.config.ts` com `datasource.url = env('DIRECT_URL')`
   - Já existia (change anterior) e **deliberadamente não usa** o helper `env()`: ele lança erro já no carregamento da config para comandos que não precisam da URL (`prisma generate`, chamado no `postinstall` de todo `pnpm install`), o que quebraria `pnpm install` num clone novo sem `.env` — bug real que eu mesmo reproduzi e corrigi na change anterior. Usa `process.env["DATABASE_URL_UNPOOLED"] ?? process.env["DIRECT_URL"]` (suporta os dois nomes); comandos que de fato precisam da URL ainda falham com erro claro.
 - [x] 2.3 Criar `src/lib/prisma.ts`: singleton do `PrismaClient` com `PrismaNeon({ connectionString: DATABASE_URL })`
@@ -59,7 +62,8 @@
 - [x] 4.2 Habilitar login com Google e magic link por e-mail → configurado no console do Neon Auth (fora deste repositório); confirmado com o usuário
 - [x] 4.3 ~~Criar `src/app/api/auth/[...all]/route.ts`~~ → já existe como `app/api/auth/[...path]/route.ts` (proxy do Neon Auth, de outra sessão)
 - [x] 4.4 Criar helper `getSessionUserOrRedirect()` para Server Components e Server Actions — inclui o upsert espelhando o usuário local (`lib/auth/session.ts`)
-  - Implementado com `cache()` do React, pra não repetir o upsert várias vezes no mesmo request/render se chamado por mais de um Server Component. Redireciona pra `/login` via `redirect()` do `next/navigation` quando não há sessão.
+  - Implementado com `cache()` do React, pra não repetir a checagem várias vezes no mesmo request/render se chamado por mais de um Server Component. Redireciona pra `/login` via `redirect()` do `next/navigation` quando não há sessão.
+  - **Atualização (pedido do usuário antes das seções 6-7):** troquei `prisma.user.upsert` (sempre escreve) por `findUnique` + `create` só se não encontrar — não mantém email/nome sincronizados a cada chamada, mas evita uma escrita no banco em toda página vista por um usuário já espelhado.
   - Também corrigi o layout: `app/layout.tsx` (da change anterior) renderizava header+nav pra **todas** as rotas, incluindo a futura `/login`. Criei `app/(app)/layout.tsx` com o shell e movi `/`, `/explorar`, `/perfil` pra dentro do grupo `(app)`; a raiz ficou só com html/body/fonts/Toaster. Decisão confirmada com o usuário antes de fazer.
 - [x] 4.5 Tela `/(auth)/login` mobile-first com botão "Continuar com Google" (`authClient.signIn.social`) e formulário de magic link por e-mail (`authClient.signIn.magicLink`)
   - Fora do grupo `(app)`, então não mostra a navegação inferior (confirmado via curl: `/login` sem `<nav>`, `/` com `<nav>`). Erros de rede mostram toast (sonner), por isso adicionei `<Toaster />` no layout raiz.
@@ -75,20 +79,32 @@
   - Tive que ensinar o Vitest a carregar `.env.local` (`vitest.setup.ts`) — ele não faz isso automaticamente como o Next faz; sem isso o teste de integração era pulado silenciosamente por achar que não havia `DATABASE_URL`.
 
 ## 6. Onboarding (spec: onboarding)
-- [ ] 6.1 Guarda de rota: sem `onboarded_at` → `/onboarding`; com `onboarded_at` em `/onboarding` → painel (layout de `(app)` e page de onboarding)
-- [ ] 6.2 Tela `/onboarding`: campo de renda com máscara pt-BR e validação ("Informe quanto você recebe por mês")
-- [ ] 6.3 Prévia ao vivo da divisão 50/30/20 com frase de exemplo por balde
-- [ ] 6.4 Server Action `completeOnboarding(incomeCents)`: valida com zod, grava settings e cria ciclo do mês em `prisma.$transaction`, redireciona
-- [ ] 6.5 Garantir idempotência (duplo clique / retry não duplica ciclo)
-- [ ] 6.6 Sugestão de instalação do PWA ao concluir, com "Agora não"
+- [x] 6.1 Guarda de rota: sem `onboarded_at` → `/onboarding`; com `onboarded_at` em `/onboarding` → painel (layout de `(app)` e page de onboarding)
+  - `app/(app)/layout.tsx` (sem `onboardedAt` → `redirect("/onboarding")`) e `app/onboarding/page.tsx` (com `onboardedAt` → `redirect("/")`). `/onboarding` fica fora do grupo `(app)` (como o design.md já esboçava), senão o guard do `(app)` redirecionaria de volta pra `/onboarding` num loop. Confirmado via `curl`: `/`, `/onboarding` e `/novo` sem sessão → 307 pra `/login`.
+- [x] 6.2 Tela `/onboarding`: campo de renda com máscara pt-BR e validação ("Informe quanto você recebe por mês")
+  - `app/onboarding/onboarding-form.tsx`. Em vez de uma máscara de dígitos, usa `parseBRL` (já testado na seção 3) sobre um campo de texto livre — bate com o cenário "Formatos de entrada aceitos" da spec ("5000", "5.000", "5000,50", "5.000,50") literalmente.
+- [x] 6.3 Prévia ao vivo da divisão 50/30/20 com frase de exemplo por balde
+  - Mesmo arquivo: `splitIncome` recalculado a cada tecla, com "Necessidades"/"Lazer"/"Investimentos" e as frases de exemplo da spec.
+- [x] 6.4 Server Action `completeOnboarding(incomeCents)`: valida com zod, grava settings e cria ciclo do mês em `prisma.$transaction`, redireciona
+  - Dividido em duas camadas: a lógica (validação à parte, transação, idempotência) está em `completeOnboarding` em `server/queries.ts` — testável sem mockar `redirect()`/sessão do Neon Auth; `actions/onboarding.ts` é a Server Action fina que só pega `userId` da sessão, chama a função de dados e redireciona para `/?onboarded=1` (o parâmetro dispara a sugestão de PWA da 6.6).
+- [x] 6.5 Garantir idempotência (duplo clique / retry não duplica ciclo)
+  - Dois mecanismos: (1) se `onboardedAt` já existe, a função retorna o ciclo/settings existentes sem escrever nada (cobre retry sequencial); (2) se duas chamadas concorrentes ainda assim colidirem na criação do ciclo (P2002), a segunda relê o que a primeira criou em vez de falhar (cobre duplo clique de verdade). **Testado contra o Neon real** em `server/onboarding.test.ts`: um teste dispara `Promise.all` com duas chamadas simultâneas e confere que só existe 1 `BudgetCycle` no banco depois.
+- [x] 6.6 Sugestão de instalação do PWA ao concluir, com "Agora não"
+  - `components/install-pwa-prompt.tsx`, montado no `(app)/layout.tsx`. Escuta `beforeinstallprompt` e só aparece se esse evento disparar (Chrome/Android) e a URL tiver `?onboarded=1`. **Nota**: sem o service worker da seção 9 (Serwist, fora do escopo daqui), o Chrome pode nunca disparar esse evento — o componente então nunca aparece, o que é o comportamento correto pro cenário da spec ("navegador mobile que permite instalação"), mas significa que isso só vai ficar visível de verdade depois da seção 9.
 
 ## 7. Lançamento rápido (spec: expense-entry)
-- [ ] 7.1 Tela/sheet `/(app)/novo`: input único com autofoco ("mercado 120")
-- [ ] 7.2 Parse em tempo real com `parseQuickEntry` + balde sugerido via `suggestBucket` (fallback: needs)
-- [ ] 7.3 Toggle de balde trocável com 1 toque
-- [ ] 7.4 Server Action `createExpense`: valida (valor > 0, descrição não vazia), associa ao ciclo do mês atual
-- [ ] 7.5 Mensagem de erro para valor vazio/negativo; toast de sucesso com "Desfazer"
-- [ ] 7.6 Garantir fluxo em ≤ 3 interações (digitar → confirmar balde → salvar)
+- [x] 7.1 Tela/sheet `/(app)/novo`: input único com autofoco ("mercado 120")
+  - Implementado como página (`app/(app)/novo/page.tsx` + `quick-entry-form.tsx`), não como Sheet sobre o painel — a seção 8 (FAB "novo gasto", fora do escopo aqui) ainda não existe pra disparar um Sheet; a página funciona standalone e pode virar o conteúdo de um Sheet depois sem mudar a lógica.
+- [x] 7.2 Parse em tempo real com `parseQuickEntry` + balde sugerido via `suggestBucket` (fallback: needs)
+  - Balde sugerido é **estado derivado** do texto digitado (não `useEffect` + `setState` — o ESLint do projeto rejeitou isso como `react-hooks/set-state-in-effect`, com razão: causa renders em cascata). Só passa a vir de um estado próprio depois que o usuário toca no toggle.
+- [x] 7.3 Toggle de balde trocável com 1 toque
+  - `ToggleGroup`/`ToggleGroupItem` do shadcn — que aqui usam Base UI, não Radix: a API é `value`/`onValueChange` como **array** (`[bucket]`/`(values) => values[0]`), diferente do `type="single"` do Radix. Confirmei lendo os `.d.ts` do pacote antes de escrever, não assumindo pela API mais comum.
+- [x] 7.4 Server Action `createExpense`: valida (valor > 0, descrição não vazia), associa ao ciclo do mês atual
+  - `actions/expenses.ts`: zod valida os três campos, busca/cria o ciclo do período atual via `getOrCreateCycle`, grava `occurredOn` como data pura no fuso do usuário (`todayInTimezone`, novo em `lib/domain/period.ts`, com teste) — não `new Date()` direto, que poderia cair no dia errado perto da meia-noite (design.md D8).
+- [x] 7.5 Mensagem de erro para valor vazio/negativo; toast de sucesso com "Desfazer"
+  - Erro inline (não toast) quando `parseQuickEntry` retorna `null` (vazio, sem valor ou sem descrição — `parseQuickEntry` já rejeita negativo por construção, não existe "123-45" válido). Sucesso usa `sonner` com `action: { label: "Desfazer", onClick: () => deleteExpense(id) }`.
+- [x] 7.6 Garantir fluxo em ≤ 3 interações (digitar → confirmar balde → salvar)
+  - Por construção: 1 campo de texto (digitar) + no máximo 1 toque opcional no toggle (só se quiser trocar o balde sugerido) + 1 toque em Salvar — 2 a 3 interações, nunca mais.
 
 ## 8. Painel (spec: budget-dashboard)
 - [ ] 8.1 Página `/(app)`: cards de Necessidades, Lazer e Investimentos com limite, gasto e disponível

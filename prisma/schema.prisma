@@ -69,8 +69,15 @@ model Expense {
 }
 
 // ─────────────────────────────────────────────
-// Better Auth (core). Confira contra a saída de
-// `npx @better-auth/cli generate` e ajuste se houver diferença.
+// Espelho local do usuário do Neon Auth.
+//
+// O Neon Auth (@neondatabase/auth, "auth only") é hospedado e não grava
+// nada neste Postgres — sessão, conta OAuth e tokens de verificação vivem
+// no serviço da Neon, não aqui. Os models Session/Account/Verification que
+// existiam antes (pensados para Better Auth cru + prismaAdapter) nunca
+// tiveram consumidor nenhum e foram removidos. `User` continua: é o que
+// UserSettings/BudgetCycle/Expense referenciam via FK, e
+// getSessionUserOrRedirect() (lib/auth/session.ts) o mantém espelhado.
 // ─────────────────────────────────────────────
 
 model User {
@@ -82,60 +89,9 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  sessions     Session[]
-  accounts     Account[]
   settings     UserSettings?
   budgetCycles BudgetCycle[]
   expenses     Expense[]
 
   @@map("user")
-}
-
-model Session {
-  id        String   @id
-  expiresAt DateTime @map("expires_at")
-  token     String   @unique
-  ipAddress String?  @map("ip_address")
-  userAgent String?  @map("user_agent")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  userId    String   @map("user_id")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("session")
-}
-
-model Account {
-  id                    String    @id
-  accountId             String    @map("account_id")
-  providerId            String    @map("provider_id")
-  userId                String    @map("user_id")
-  accessToken           String?   @map("access_token")
-  refreshToken          String?   @map("refresh_token")
-  idToken               String?   @map("id_token")
-  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
-  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
-  scope                 String?
-  password              String?
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("account")
-}
-
-model Verification {
-  id         String   @id
-  identifier String
-  value      String
-  expiresAt  DateTime @map("expires_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
-  @@index([identifier])
-  @@map("verification")
 }

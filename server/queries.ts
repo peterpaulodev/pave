@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { splitIncome, type Bucket } from "@/lib/domain/buckets";
+import { currentPeriod } from "@/lib/domain/period";
 
 // Every function here takes `userId` explicitly — it always comes from the
 // caller's session (via getSessionUserOrRedirect()), never from client
@@ -63,6 +64,82 @@ export async function getOrCreateCycle(userId: string, period: string) {
       return prisma.budgetCycle.findUniqueOrThrow({
         where: { userId_period: { userId, period } },
       });
+    }
+    throw error;
+  }
+}
+
+export interface OnboardingResult {
+  settings: NonNullable<Awaited<ReturnType<typeof getUserSettings>>>;
+  cycle: Awaited<ReturnType<typeof getOrCreateCycle>>;
+}
+
+/**
+ * Saves the user's monthly income as their default and creates the
+ * current period's budget cycle, atomically (prisma.$transaction).
+ *
+ * Idempotent two ways, per design.md's "Confirmação repetida" scenario:
+ * - Sequential duplicate submit (e.g. a retried request after the first
+ *   one already succeeded): if `onboardedAt` is already set, this is a
+ *   no-op that just returns the existing settings/cycle instead of
+ *   overwriting the income or creating a second cycle.
+ * - Concurrent duplicate submit (e.g. a genuine double-click racing two
+ *   requests that both read `onboardedAt` as unset before either writes):
+ *   the transaction's `budgetCycle` upsert can still lose that race and
+ *   throw P2002; when it does, the other request's write already won, so
+ *   this reads it back instead of failing.
+ */
+export async function completeOnboarding(
+  userId: string,
+  incomeCents: number
+): Promise<OnboardingResult> {
+  const settings = await getUserSettings(userId);
+  if (settings?.onboardedAt) {
+    const cycle = await getOrCreateCycle(
+      userId,
+      currentPeriod(settings.timezone)
+    );
+    return { settings, cycle };
+  }
+
+  const timezone = settings?.timezone ?? "America/Sao_Paulo";
+  const period = currentPeriod(timezone);
+  const { needs, wants, savings } = splitIncome(incomeCents);
+  const onboardedAt = new Date();
+
+  try {
+    const [updatedSettings, cycle] = await prisma.$transaction([
+      prisma.userSettings.upsert({
+        where: { userId },
+        create: { userId, timezone, defaultIncomeCents: incomeCents, onboardedAt },
+        update: { defaultIncomeCents: incomeCents, onboardedAt },
+      }),
+      prisma.budgetCycle.upsert({
+        where: { userId_period: { userId, period } },
+        create: {
+          userId,
+          period,
+          incomeCents,
+          needsLimitCents: needs,
+          wantsLimitCents: wants,
+          savingsLimitCents: savings,
+        },
+        update: {},
+      }),
+    ]);
+    return { settings: updatedSettings, cycle };
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const [updatedSettings, cycle] = await Promise.all([
+        prisma.userSettings.findUniqueOrThrow({ where: { userId } }),
+        prisma.budgetCycle.findUniqueOrThrow({
+          where: { userId_period: { userId, period } },
+        }),
+      ]);
+      return { settings: updatedSettings, cycle };
     }
     throw error;
   }

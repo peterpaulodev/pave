@@ -16,11 +16,13 @@ export interface SessionUser {
  *
  * Neon Auth is a hosted service — it never writes to this app's own
  * Postgres database (see design.md D7). UserSettings/BudgetCycle/Expense
- * all have a foreign key to the local `user` table, though, so every call
- * mirrors the Neon Auth identity into a local `user` row first; otherwise
- * the first write for a brand-new user would fail with a foreign key
- * violation. Wrapped in `cache()` so multiple calls within the same
- * request/render only do this once.
+ * all have a foreign key to the local `user` table, though, so the first
+ * call for a brand-new user mirrors the Neon Auth identity into a local
+ * `user` row; otherwise that user's first write would fail with a foreign
+ * key violation. Only writes when the local row is missing — it does not
+ * keep email/name in sync on every call, trading a (rare) staleness for
+ * not writing to Postgres on every single request. Wrapped in `cache()`
+ * so multiple calls within the same request/render only check this once.
  *
  * Callers must render dynamically (`export const dynamic = "force-dynamic"`)
  * — same requirement as any use of `auth.getSession()`.
@@ -33,11 +35,10 @@ export const getSessionUserOrRedirect = cache(
     }
 
     const { id, email, name } = session.user;
-    await prisma.user.upsert({
-      where: { id },
-      create: { id, email, name },
-      update: { email, name },
-    });
+    const existing = await prisma.user.findUnique({ where: { id } });
+    if (!existing) {
+      await prisma.user.create({ data: { id, email, name } });
+    }
 
     return { id, email, name };
   }
