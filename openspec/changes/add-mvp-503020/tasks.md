@@ -17,7 +17,7 @@
 > **Decisão de estrutura (confirmada com o usuário antes de começar):** o `design.md` assume tudo sob `src/`, mas o projeto atual (da change `bootstrap-mobile-first-nextjs-app`, já arquivada) vive na raiz (`app/`, `components/`, `lib/`, alias `@/* → ./*`). Optamos por manter a raiz em vez de migrar o projeto inteiro para `src/`. Os itens abaixo usam `lib/...` em vez de `src/lib/...`.
 
 - [x] 2.1 Criar `prisma/schema.prisma` conforme design.md (generator `prisma-client` com output em `src/generated/prisma`)
-  - O arquivo já existia (editado antes desta sessão) com todo o domínio 50/30/20 + tabelas do Better Auth/Neon Auth, exatamente como o design.md descreve — só corrigi `output` de `../src/generated/prisma` para `../lib/generated/prisma` (decisão de estrutura acima) e removi o diretório `src/` órfão que tinha sido gerado lá.
+  - O arquivo já existia (editado antes desta sessão) com todo o domínio 50/30/20 + as tabelas `user`/`session`/`account`/`verification` (espelho local das FKs — o Neon Auth em si não as usa, ver D7 do design.md) — só corrigi `output` de `../src/generated/prisma` para `../lib/generated/prisma` (decisão de estrutura acima) e removi o diretório `src/` órfão que tinha sido gerado lá.
 - [x] 2.2 Criar `prisma.config.ts` com `datasource.url = env('DIRECT_URL')`
   - Já existia (change anterior) e **deliberadamente não usa** o helper `env()`: ele lança erro já no carregamento da config para comandos que não precisam da URL (`prisma generate`, chamado no `postinstall` de todo `pnpm install`), o que quebraria `pnpm install` num clone novo sem `.env` — bug real que eu mesmo reproduzi e corrigi na change anterior. Usa `process.env["DATABASE_URL_UNPOOLED"] ?? process.env["DIRECT_URL"]` (suporta os dois nomes); comandos que de fato precisam da URL ainda falham com erro claro.
 - [x] 2.3 Criar `src/lib/prisma.ts`: singleton do `PrismaClient` com `PrismaNeon({ connectionString: DATABASE_URL })`
@@ -44,18 +44,35 @@
 - [x] 3.10 Testes de `suggestBucket`: match por bucket, sem match → `null`, acentos ("açougue")
 
 ## 4. Autenticação
-- [ ] 4.1 Configurar Better Auth em `src/lib/auth.ts` com `prismaAdapter(prisma, { provider: 'postgresql' })`; conferir models de auth com `npx @better-auth/cli generate` e migrar
-- [ ] 4.2 Habilitar login com Google e magic link por e-mail
-- [ ] 4.3 Criar `src/app/api/auth/[...all]/route.ts`
-- [ ] 4.4 Criar helper `getSessionUserOrRedirect()` para Server Components e Server Actions
-- [ ] 4.5 Tela `/(auth)/login` mobile-first
+
+> **Decisão (confirmada com o usuário):** só Neon Auth, não Better Auth cru.
+> A seção original pedia configurar Better Auth com `prismaAdapter` do
+> zero — isso foi substituído pelo Neon Auth (`@neondatabase/auth`), já
+> instalado e funcionando (`lib/auth/server.ts`, `lib/auth/client.ts`,
+> `app/api/auth/[...path]/route.ts`, `app/api/me/route.ts`, de outra sessão).
+> Ver D7 do design.md para a razão e para a ressalva importante: o Neon
+> Auth é hospedado e não grava nada no Postgres da aplicação, então
+> `getSessionUserOrRedirect()` precisa espelhar o usuário localmente pra
+> não violar as FKs de `UserSettings`/`BudgetCycle`/`Expense`.
+
+- [x] 4.1 ~~Configurar Better Auth em `src/lib/auth.ts` com `prismaAdapter`~~ → não aplicável; Neon Auth já configurado (ver nota acima e D7)
+- [x] 4.2 Habilitar login com Google e magic link por e-mail → configurado no console do Neon Auth (fora deste repositório); confirmado com o usuário
+- [x] 4.3 ~~Criar `src/app/api/auth/[...all]/route.ts`~~ → já existe como `app/api/auth/[...path]/route.ts` (proxy do Neon Auth, de outra sessão)
+- [x] 4.4 Criar helper `getSessionUserOrRedirect()` para Server Components e Server Actions — inclui o upsert espelhando o usuário local (`lib/auth/session.ts`)
+  - Implementado com `cache()` do React, pra não repetir o upsert várias vezes no mesmo request/render se chamado por mais de um Server Component. Redireciona pra `/login` via `redirect()` do `next/navigation` quando não há sessão.
+  - Também corrigi o layout: `app/layout.tsx` (da change anterior) renderizava header+nav pra **todas** as rotas, incluindo a futura `/login`. Criei `app/(app)/layout.tsx` com o shell e movi `/`, `/explorar`, `/perfil` pra dentro do grupo `(app)`; a raiz ficou só com html/body/fonts/Toaster. Decisão confirmada com o usuário antes de fazer.
+- [x] 4.5 Tela `/(auth)/login` mobile-first com botão "Continuar com Google" (`authClient.signIn.social`) e formulário de magic link por e-mail (`authClient.signIn.magicLink`)
+  - Fora do grupo `(app)`, então não mostra a navegação inferior (confirmado via curl: `/login` sem `<nav>`, `/` com `<nav>`). Erros de rede mostram toast (sonner), por isso adicionei `<Toaster />` no layout raiz.
 
 ## 5. Camada de dados
-- [ ] 5.1 `src/server/queries.ts`: todas as funções recebem `userId` da sessão, nunca do cliente
-- [ ] 5.2 `getUserSettings(userId)`, `upsertUserSettings(...)`
-- [ ] 5.3 `getOrCreateCycle(userId, period)` idempotente via `prisma.budgetCycle.upsert` em `userId_period`, capturando `P2002` e refazendo `findUniqueOrThrow`
-- [ ] 5.4 `getCycleBalances(userId, cycleId)`: limites − `prisma.expense.groupBy({ by: ['bucket'], _sum: { amountCents: true } })`
-- [ ] 5.5 `createExpense(...)`, `deleteExpense(userId, expenseId)`, `listExpenses(cycleId)`
+- [x] 5.1 `server/queries.ts`: todas as funções recebem `userId` da sessão, nunca do cliente
+- [x] 5.2 `getUserSettings(userId)`, `upsertUserSettings(...)`
+- [x] 5.3 `getOrCreateCycle(userId, period)` idempotente via `prisma.budgetCycle.upsert` em `userId_period`, capturando `P2002` e refazendo `findUniqueOrThrow`
+- [x] 5.4 `getCycleBalances(userId, cycleId)`: limites − `prisma.expense.groupBy({ by: ['bucket'], _sum: { amountCents: true } })`
+- [x] 5.5 `createExpense(...)`, `deleteExpense(userId, expenseId)`, `listExpenses(cycleId)`
+  - **Desvio do texto literal**: implementei `listExpenses(userId, cycleId)` (dois parâmetros, não só `cycleId`) — a regra no topo da própria seção 5 ("todas as funções recebem userId... nunca do cliente") vale pra essa função também; `cycleId` sozinho deixaria um usuário listar gastos de outro se descobrisse/vazasse o id do ciclo.
+  - Testado de ponta a ponta contra o Neon real (`server/queries.test.ts`, pulado automaticamente se `DATABASE_URL` não estiver definida): round-trip de settings, criação idempotente de ciclo, matemática de saldo por balde, isolamento entre usuários em `deleteExpense`. Criei um usuário de teste e confirmei que o `afterAll` limpa tudo (cascade), sem resíduo no banco.
+  - Tive que ensinar o Vitest a carregar `.env.local` (`vitest.setup.ts`) — ele não faz isso automaticamente como o Next faz; sem isso o teste de integração era pulado silenciosamente por achar que não havia `DATABASE_URL`.
 
 ## 6. Onboarding (spec: onboarding)
 - [ ] 6.1 Guarda de rota: sem `onboarded_at` → `/onboarding`; com `onboarded_at` em `/onboarding` → painel (layout de `(app)` e page de onboarding)

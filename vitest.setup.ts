@@ -1,4 +1,10 @@
+import { config } from "dotenv";
 import { vi } from "vitest";
+
+// Next.js loads .env.local/.env on its own; Vitest doesn't, so integration
+// tests that need a real DATABASE_URL (server/queries.test.ts) would
+// always see it as unset otherwise.
+config({ path: [".env.local", ".env"] });
 
 // Next.js's bundler resolves `server-only` to a no-op when building for the
 // server (and to a throwing module only for client bundles). Under Vitest

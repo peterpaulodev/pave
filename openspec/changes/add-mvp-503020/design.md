@@ -35,16 +35,19 @@ Prisma ORM instalado (sem schema ainda).
 ### D2 — Neon + Prisma ORM
 - Schema em `prisma/schema.prisma`, migrations com `prisma migrate dev` (dev)
   e `prisma migrate deploy` (CI/produção).
-- Client gerado com o generator `prisma-client` em `src/generated/prisma`
-  (adicionar ao `.gitignore`; rodar `prisma generate` no `postinstall`).
+- Client gerado com o generator `prisma-client` em `lib/generated/prisma`
+  (projeto na raiz, sem pasta `src/` — ver Estrutura de pastas; já no
+  `.gitignore`; `prisma generate` roda no `postinstall`).
 - Runtime com **driver adapter** `@prisma/adapter-neon` usando a connection
   string **pooled** (`DATABASE_URL`).
 - CLI (migrations) via `prisma.config.ts` usando a connection string **direct**
   (`DIRECT_URL`, host sem `-pooler`).
 - Tabelas e colunas em snake_case no banco via `@@map` / `@map`; models e
   campos em PascalCase/camelCase no código.
-- Singleton do client em `src/lib/prisma.ts` (evita múltiplas instâncias no
-  hot reload do `next dev`).
+- Singleton do client em `lib/db.ts` (já existente, da change anterior;
+  exposto como `Proxy` preguiçoso para não instanciar no escopo do módulo —
+  evita múltiplas instâncias no hot reload do `next dev` e evita exigir
+  `DATABASE_URL` só para `next build`).
 - **Alternativa considerada:** Drizzle — SQL tipado e mais leve, mas o Prisma já
   está instalado e atende o MVP; DX do schema e Prisma Studio pesaram a favor.
 
@@ -60,22 +63,8 @@ export default defineConfig({
 });
 ```
 
-```ts
-// src/lib/prisma.ts
-import { PrismaClient } from '@/generated/prisma/client';
-import { PrismaNeon } from '@prisma/adapter-neon';
-
-const createClient = () =>
-  new PrismaClient({
-    adapter: new PrismaNeon({ connectionString: process.env.DATABASE_URL! }),
-  });
-
-const globalForPrisma = globalThis as unknown as { prisma?: ReturnType<typeof createClient> };
-
-export const prisma = globalForPrisma.prisma ?? createClient();
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
-```
+Ver a implementação real em `lib/db.ts` (singleton + `PrismaNeon` +
+`Proxy` preguiçoso, com cache em `globalThis`).
 
 > Se o projeto estiver no Prisma 6, a URL fica no `datasource` do schema
 > (`url = env("DATABASE_URL")`, `directUrl = env("DIRECT_URL")`) e o generator
@@ -121,13 +110,26 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
   gerado pelo Prisma, mas sem importar o client — mantém o domínio desacoplado do ORM.
 
 ### D7 — Autenticação
-- **Better Auth** com `prismaAdapter(prisma, { provider: 'postgresql' })`,
-  login por e-mail (magic link) + Google.
-- Models de auth (`User`, `Session`, `Account`, `Verification`) no mesmo
-  `schema.prisma`; conferir com `npx @better-auth/cli generate`.
-- **Alternativa:** Neon Auth, se preferir manter auth gerenciado no Neon.
+- **Neon Auth** (`@neondatabase/auth`, serviço de auth gerenciado pela Neon) —
+  não Better Auth cru com `prismaAdapter`. Login por e-mail (magic link) +
+  Google, habilitados no console do projeto Neon (fora deste repositório).
+- `@neondatabase/auth` na variante "auth only" fala com um servidor de auth
+  **hospedado** (`NEON_AUTH_BASE_URL`) e **não grava nada no Postgres da
+  aplicação** (`DATABASE_URL`): sessão e identidade do usuário vivem no
+  serviço da Neon, não neste banco.
+- Os models `User`/`Session`/`Account`/`Verification` continuam no
+  `schema.prisma` só para satisfazer as FKs de `UserSettings`/`BudgetCycle`/
+  `Expense` em `userId` — não são geridos por Better Auth nem alimentados
+  automaticamente pelo Neon Auth.
+- `getSessionUserOrRedirect()` (`lib/auth/session.ts`) é o único ponto que
+  faz a ponte: lê a sessão do Neon Auth e faz `prisma.user.upsert`
+  espelhando `id`/`email`/`name` localmente a cada chamada, mantendo a FK
+  válida sem precisar de webhook ou de uma segunda fonte de verdade.
 - Toda query filtra por `userId` da sessão na camada de dados
-  (`src/server/queries.ts`); nenhuma Server Action recebe `userId` do cliente.
+  (`lib/server/queries.ts`); nenhuma Server Action recebe `userId` do cliente.
+- **Alternativa descartada:** Better Auth cru com `prismaAdapter` — exigiria
+  manter um segundo sistema de login concorrendo com o Neon Auth já
+  configurado e funcionando.
 
 ### D8 — Datas de gasto
 - `occurredOn` é `@db.Date`. O Prisma devolve `Date` em UTC; gravar sempre a data
@@ -143,7 +145,7 @@ Ver `prisma/schema.prisma`. Resumo:
 | `UserSettings` | `user_settings`  | PK = `userId`; `defaultIncomeCents`, `onboardedAt`, `timezone` |
 | `BudgetCycle`  | `budget_cycles`  | unique `(userId, period)`; limites dos 3 baldes em centavos |
 | `Expense`      | `expenses`       | `amountCents`, `bucket` (enum), `occurredOn` (date); índices `(cycleId, bucket)` e `(userId, occurredOn)` |
-| `User` etc.    | `user`, `session`, `account`, `verification` | Better Auth                       |
+| `User` etc.    | `user`, `session`, `account`, `verification` | Espelho local das FKs; Neon Auth é a fonte real da sessão/identidade (ver D7) |
 
 CHECK constraints (o Prisma não declara no schema — adicionar no SQL da migration
 gerada com `--create-only`):
@@ -154,35 +156,42 @@ ALTER TABLE "budget_cycles" ADD CONSTRAINT "budget_cycles_income_positive" CHECK
 
 ## Estrutura de pastas
 
+Sem pasta `src/` — projeto fica todo na raiz (decisão tomada na
+implementação das seções 1-3, ver `tasks.md`; o `@/*` do `tsconfig.json`
+aponta para `./*`).
+
 ```
 prisma/
   schema.prisma
   migrations/
 prisma.config.ts
-src/
-  app/
-    (auth)/login/page.tsx
-    onboarding/page.tsx          # renda mensal
-    (app)/page.tsx               # painel do mês
-    (app)/novo/page.tsx          # lançamento rápido
-    api/auth/[...all]/route.ts   # Better Auth
-    manifest.ts
-    sw.ts                        # Serwist
-  generated/prisma/              # client gerado (gitignored)
-  lib/
-    prisma.ts                    # singleton + adapter Neon
-    auth.ts                      # Better Auth + prismaAdapter
-    money.ts                     # formatBRL(), parseBRL()
-    domain/
-      buckets.ts                 # splitIncome(), BUCKET_RATIOS, type Bucket
-      suggest-bucket.ts          # dicionário + suggestBucket()
-      parse-quick-entry.ts       # "mercado 120" -> { description, amountCents }
-      period.ts                  # currentPeriod(tz)
-  server/
-    queries.ts                   # sempre escopado por userId
-  actions/
-    onboarding.ts                # completeOnboarding(incomeCents)
-    expenses.ts                  # createExpense(), deleteExpense()
+app/
+  (auth)/login/page.tsx
+  onboarding/page.tsx          # renda mensal
+  (app)/page.tsx               # painel do mês
+  (app)/novo/page.tsx          # lançamento rápido
+  api/auth/[...path]/route.ts  # proxy do Neon Auth (já existe)
+  api/me/route.ts              # usuário da sessão atual (já existe)
+  manifest.ts
+  sw.ts                        # Serwist
+lib/
+  db.ts                        # singleton do PrismaClient + adapter Neon (já existe)
+  generated/prisma/            # client gerado (gitignored)
+  auth/
+    server.ts                  # cliente Neon Auth server-side (já existe)
+    client.ts                  # cliente Neon Auth client-side (já existe)
+    session.ts                 # getSessionUserOrRedirect() + espelho local do user
+  money.ts                     # formatBRL(), parseBRL()
+  domain/
+    buckets.ts                 # splitIncome(), BUCKET_RATIOS, type Bucket
+    suggest-bucket.ts          # dicionário + suggestBucket()
+    parse-quick-entry.ts       # "mercado 120" -> { description, amountCents }
+    period.ts                  # currentPeriod(tz)
+server/
+  queries.ts                   # sempre escopado por userId
+actions/
+  onboarding.ts                # completeOnboarding(incomeCents)
+  expenses.ts                   # createExpense(), deleteExpense()
 ```
 
 ## Risks / Trade-offs
@@ -207,6 +216,6 @@ src/
 3. Produção: `npx prisma migrate deploy` com `DIRECT_URL` da branch `main`
 
 ## Open Questions
-- Better Auth ou Neon Auth? Resposta: Better Auth.
+- Better Auth ou Neon Auth? Resposta: Neon Auth (confirmado novamente ao implementar as seções 4-5 — ver D7).
 - Lançamento retroativo (dias anteriores) entra no MVP ou só o dia atual? Resposta: Teremos sim, entra no MVP.
 - Mostrar "dias restantes no mês × quanto posso gastar por dia" no painel? (forte para iniciante) Reposta: Sim, vamos adicionar.
