@@ -9,6 +9,45 @@ import { currentPeriod } from "@/lib/domain/period";
 // input — and every query is scoped by it. That's what keeps one user from
 // ever reading or mutating another user's data.
 
+export interface MirroredUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+/**
+ * Ensures a local `user` row exists for a Neon Auth identity (Neon Auth is
+ * hosted and never writes to this app's own Postgres — see design.md D7),
+ * so the FKs on UserSettings/BudgetCycle/Expense stay valid. Used by
+ * lib/auth/session.ts's getSessionUserOrRedirect(), kept here instead so
+ * it's testable against the real database without mocking Next.js/Neon
+ * Auth internals.
+ *
+ * Only writes when the row is missing (doesn't keep email/name in sync on
+ * every call). Two simultaneous first-ever requests for the same new user
+ * (e.g. two tabs opened at once) can both see the row as missing and both
+ * try to create it; the loser gets a P2002 on the unique id/email, which
+ * means the row now exists — read it back instead of failing.
+ */
+export async function ensureMirroredUser(user: MirroredUser): Promise<void> {
+  const existing = await prisma.user.findUnique({ where: { id: user.id } });
+  if (existing) return;
+
+  try {
+    await prisma.user.create({ data: user });
+  } catch (error) {
+    if (
+      !(
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      )
+    ) {
+      throw error;
+    }
+    await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+  }
+}
+
 export function getUserSettings(userId: string) {
   return prisma.userSettings.findUnique({ where: { userId } });
 }

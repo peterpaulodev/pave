@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import {
   createExpense,
   deleteExpense,
+  ensureMirroredUser,
   getCycleBalances,
   getOrCreateCycle,
   getUserSettings,
@@ -112,5 +113,45 @@ describe("server/queries (integration)", () => {
 
     expect(await deleteExpense("someone-else", expense.id)).toBe(false);
     expect(await listExpenses(userId, cycle.id)).toHaveLength(1);
+  });
+});
+
+describe("ensureMirroredUser (integration)", () => {
+  const mirroredUserIds: string[] = [];
+
+  afterEach(async () => {
+    while (mirroredUserIds.length > 0) {
+      const id = mirroredUserIds.pop()!;
+      await prisma.user.deleteMany({ where: { id } });
+    }
+  });
+
+  it("creates the local row on first call, and does nothing on a later call", async () => {
+    const id = `test-${randomUUID()}`;
+    mirroredUserIds.push(id);
+    const user = { id, email: `${id}@example.test`, name: "Mirror Test" };
+
+    await ensureMirroredUser(user);
+    const created = await prisma.user.findUniqueOrThrow({ where: { id } });
+    expect(created.email).toBe(user.email);
+
+    // A second call with a different name must NOT update the row — see
+    // the "doesn't keep email/name in sync" trade-off in queries.ts.
+    await ensureMirroredUser({ ...user, name: "Changed Name" });
+    const unchanged = await prisma.user.findUniqueOrThrow({ where: { id } });
+    expect(unchanged.name).toBe("Mirror Test");
+  });
+
+  it("survives two concurrent first-time calls for the same new user (P2002 race)", async () => {
+    const id = `test-${randomUUID()}`;
+    mirroredUserIds.push(id);
+    const user = { id, email: `${id}@example.test`, name: "Race Test" };
+
+    // Simulates two simultaneous requests (e.g. two tabs) both seeing the
+    // row as missing and both racing to create it.
+    await Promise.all([ensureMirroredUser(user), ensureMirroredUser(user)]);
+
+    const count = await prisma.user.count({ where: { id } });
+    expect(count).toBe(1);
   });
 });
