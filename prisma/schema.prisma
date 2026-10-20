@@ -1,8 +1,141 @@
+// prisma/schema.prisma
+// Prisma 7: a URL de conexão fica no prisma.config.ts (não no datasource).
+
 generator client {
   provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// Domínio 50/30/20
+// ─────────────────────────────────────────────
+
+enum Bucket {
+  needs
+  wants
+  savings
+
+  @@map("bucket")
+}
+
+model UserSettings {
+  userId             String    @id @map("user_id")
+  timezone           String    @default("America/Sao_Paulo")
+  defaultIncomeCents Int?      @map("default_income_cents")
+  onboardedAt        DateTime? @map("onboarded_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model BudgetCycle {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id")
+  period            String   @db.Char(7) // 'YYYY-MM'
+  incomeCents       Int      @map("income_cents")
+  needsLimitCents   Int      @map("needs_limit_cents")
+  wantsLimitCents   Int      @map("wants_limit_cents")
+  savingsLimitCents Int      @map("savings_limit_cents")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@unique([userId, period], name: "userId_period")
+  @@map("budget_cycles")
+}
+
+model Expense {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id")
+  cycleId     String   @map("cycle_id") @db.Uuid
+  amountCents Int      @map("amount_cents") // > 0 (CHECK na migration)
+  description String
+  bucket      Bucket
+  occurredOn  DateTime @map("occurred_on") @db.Date
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cycle BudgetCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  @@index([cycleId, bucket])
+  @@index([userId, occurredOn])
+  @@map("expenses")
+}
+
+// ─────────────────────────────────────────────
+// Better Auth (core). Confira contra a saída de
+// `npx @better-auth/cli generate` e ajuste se houver diferença.
+// ─────────────────────────────────────────────
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false) @map("email_verified")
+  image         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  sessions     Session[]
+  accounts     Account[]
+  settings     UserSettings?
+  budgetCycles BudgetCycle[]
+  expenses     Expense[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime @map("expires_at")
+  token     String   @unique
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  userId    String   @map("user_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([identifier])
+  @@map("verification")
 }

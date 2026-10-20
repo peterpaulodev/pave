@@ -21,13 +21,13 @@
 - [x] 3.2 Criar `prisma/schema.prisma` (generator `prisma-client` com output `../lib/generated/prisma`, datasource `postgresql` sem url) e `prisma.config.ts` (`import "dotenv/config"`, `datasource.url = env("DIRECT_URL")`); adicionar scripts `postinstall`/`db:generate`/`db:migrate`/`db:deploy`/`db:studio` e `prisma generate` antes do build; verificar que `pnpm db:generate` gera o client em `lib/generated/prisma`
 - [x] 3.3 Criar `.env.example` com `DATABASE_URL` (pooled, host `-pooler`) e `DIRECT_URL` (direta) com valores fictícios e comentários explicando o uso de cada uma; verificar que não há credenciais reais no arquivo
 - [x] 3.4 Implementar `lib/db.ts` (`server-only`, valida `DATABASE_URL` com erro que nomeia a variável, `PrismaNeon` + `PrismaClient`, singleton em `globalThis` fora de produção); verificar com teste unitário (grupo 5) que a ausência da variável gera erro citando `DATABASE_URL`
-- [ ] 3.5 Criar projeto/branch no Neon, preencher `.env` local com as duas URLs e criar a migration inicial vazia (`prisma migrate dev --name init --create-only`, depois `pnpm db:migrate`); verificar que `prisma/migrations/` foi versionada e que `pnpm prisma migrate status` reporta o banco atualizado
-  - **BLOQUEADO**: sem projeto Neon disponível nesta sessão. Usuário optou por pular por enquanto (ver conversa). Retomar assim que houver `DATABASE_URL`/`DIRECT_URL` reais.
+- [x] 3.5 Criar projeto/branch no Neon, preencher `.env` local com as duas URLs e criar a migration inicial vazia (`prisma migrate dev --name init --create-only`, depois `pnpm db:migrate`); verificar que `prisma/migrations/` foi versionada e que `pnpm prisma migrate status` reporta o banco atualizado
+  - Projeto Neon e `.env.local` configurados (fora desta sessão, via Neon Auth/MCP). Migration `20261020010523_init` criada e aplicada; `prisma migrate status` reporta "Database schema is up to date!".
 
 ## 4. Health check
 
 - [x] 4.1 Implementar `app/api/health/route.ts` (`dynamic = "force-dynamic"`, `runtime = "nodejs"`, `SELECT 1` com timeout de 5s, `Cache-Control: no-store`, 200 `{"status":"ok","database":"up"}` / 503 `{"status":"error","database":"down"}`, erro só no log do servidor); verificar com `curl -i localhost:3000/api/health` retornando 200 com o banco configurado
-  - Implementado e com o caminho de sucesso coberto por teste unitário (task 5.2, mockando `$queryRaw`). O `curl` real contra um Neon configurado (200 com banco de verdade) fica pendente da task 3.5.
+  - Verificado com `curl -i localhost:3000/api/health` contra o Neon real (pós 3.5): `200 {"status":"ok","database":"up"}`. Caminho de sucesso também coberto por teste unitário (task 5.2, mockando `$queryRaw`).
 - [x] 4.2 Verificar a falha: com `DATABASE_URL` apontando para um host inválido, `curl -i /api/health` retorna 503 com o corpo exato, sem stack trace ou connection string
 
 ## 5. Testes automatizados
@@ -46,5 +46,5 @@
 - [ ] 6.2 Validar em aparelho real (ou tunnel/rede local): em Android, instalar pela opção "Adicionar à tela inicial" e confirmar abertura em modo standalone; em iPhone com notch, confirmar header e nav fora das áreas seguras
   - **BLOQUEADO**: precisa de um aparelho físico do usuário.
 - [x] 6.3 Escrever `README.md` (pré-requisitos, setup do Neon com pooled vs direta, variáveis, scripts, convenções mobile first: estilos base sem prefixo, breakpoints só `min-width`, alvos ≥44px, safe areas) e verificar que um clone limpo segue o README até `/api/health` retornar 200
-  - README escrito e revisado contra o que foi de fato implementado. A verificação ponta a ponta "clone limpo → /api/health 200" depende de um Neon real (task 3.5).
+  - README escrito e revisado contra o que foi de fato implementado. Fluxo `install → db:migrate → dev → /api/health 200` verificado de ponta a ponta contra o Neon real (pós 3.5), confirmando que o README está correto. Nota: o README documenta `DATABASE_URL`/`DIRECT_URL`; o projeto passou a aceitar também `DATABASE_URL_UNPOOLED` (ver `prisma.config.ts`) depois que outra sessão configurou Neon Auth — vale revisitar o README se isso for formalizado.
 - [x] 6.4 Rodar `pnpm lint && pnpm test && pnpm build` e confirmar que tudo passa
