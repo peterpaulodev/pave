@@ -34,6 +34,46 @@ const manual = (source: string, suggestedBucket: string | null, overridden = fal
 });
 const recurring = { source: "recurring", bucket: "needs", suggestedBucket: null, overridden: false };
 
+// Source-table helpers: retention and "active users" read expenses and
+// daily_checkins directly, so these tests insert rows there — no events.
+const cycles = new Map<string, string>();
+async function cycleOf(userId: string) {
+  let id = cycles.get(userId);
+  if (!id) {
+    const cycle = await prisma.budgetCycle.create({
+      data: {
+        userId, period: "2031-06", incomeCents: 100,
+        needsLimitCents: 50, wantsLimitCents: 30, savingsLimitCents: 20,
+      },
+    });
+    id = cycle.id;
+    cycles.set(userId, id);
+  }
+  return id;
+}
+
+async function addExpense(userId: string, createdAt: Date, opts: { recurring?: boolean } = {}) {
+  const recurringExpenseId = opts.recurring
+    ? (
+        await prisma.recurringExpense.create({
+          data: { userId, description: "x", amountCents: 1, bucket: "needs", dayOfMonth: 1 },
+        })
+      ).id
+    : null;
+  await prisma.expense.create({
+    data: {
+      userId, cycleId: await cycleOf(userId), amountCents: 100, description: "x",
+      bucket: "needs", occurredOn: new Date("2031-06-01T00:00:00.000Z"),
+      createdAt, recurringExpenseId,
+    },
+  });
+}
+
+const addCheckin = (userId: string, date: string) =>
+  prisma.dailyCheckin.create({ data: { userId, date: new Date(`${date}T00:00:00.000Z`) } });
+
+const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+
 afterAll(async () => {
   await prisma.user.deleteMany({ where: { id: { in: allUsers } } });
 });
@@ -53,38 +93,54 @@ describe("getMetrics", () => {
     expect((await getMetrics({ windowDays: 7, onlyUserIds: ids, now: NOW })).onboarding).toEqual({ num: 2, den: 2 });
   });
 
-  it("retenção na semana 2: coorte de 14–44 dias, atividade entre os dias 7 e 13", async () => {
-    const mk = async (onboardedDaysAgo: number) => {
+  it("retenção na semana 2: coorte de 14–44 dias, atividade nos dias locais 7–13, lida das tabelas", async () => {
+    const SP = "America/Sao_Paulo";
+    const mk = async (onboardedDaysAgo: number, timezone = "UTC") => {
       const id = await newUser(ago(onboardedDaysAgo + 1));
-      const at = ago(onboardedDaysAgo);
-      await addEvent(id, "onboarding_completed", at);
+      const at = ago(onboardedDaysAgo); // 12:00Z
+      await prisma.userSettings.create({
+        data: { userId: id, timezone, onboardedAt: at },
+      });
       return { id, at };
     };
     const after = (at: Date, ms: number) => new Date(at.getTime() + ms);
 
-    const r1 = await mk(20); // gasto manual no dia 9 → retido
-    await addEvent(r1.id, "expense_created", after(r1.at, 9 * DAY), manual("quick_entry", "needs"));
-    const r2 = await mk(30); // só gasto automático e lembrete no dia 8 → não retido
-    await addEvent(r2.id, "expense_created", after(r2.at, 8 * DAY), recurring);
+    const r1 = await mk(20); // gasto manual no dia 9, sem nenhum evento → retido
+    await addExpense(r1.id, after(r1.at, 9 * DAY));
+    const r2 = await mk(30); // só gasto de conta fixa (e lembrete) no dia 8 → não retido
+    await addExpense(r2.id, after(r2.at, 8 * DAY), { recurring: true });
     await addEvent(r2.id, "reminder_sent", after(r2.at, 8 * DAY));
     const r3 = await mk(25); // dia sem gasto no dia 13 → retido
-    await addEvent(r3.id, "no_spend_checkin", after(r3.at, 13 * DAY + 12 * HOUR), { via: "app" });
-    const r4 = await mk(25); // dia 6 e exatamente 14 dias → fora do intervalo
-    await addEvent(r4.id, "expense_created", after(r4.at, 7 * DAY - HOUR), manual("quick_entry", "needs"));
-    await addEvent(r4.id, "expense_created", after(r4.at, 14 * DAY), manual("quick_entry", "needs"));
-    const r5 = await mk(40); // exatamente 7 dias → retido (limite inclusivo)
-    await addEvent(r5.id, "expense_created", after(r5.at, 7 * DAY), manual("notification", "needs"));
+    await addCheckin(r3.id, isoDate(after(r3.at, 13 * DAY)));
+    const r4 = await mk(25); // dia 6 e dia 14 → fora do intervalo
+    await addExpense(r4.id, after(r4.at, 6 * DAY));
+    await addExpense(r4.id, after(r4.at, 14 * DAY));
+    await addCheckin(r4.id, isoDate(after(r4.at, 6 * DAY)));
+    await addCheckin(r4.id, isoDate(after(r4.at, 14 * DAY)));
+    const r5 = await mk(40); // dia 7 exato → retido (limite inclusivo)
+    await addExpense(r5.id, after(r5.at, 7 * DAY));
+    // Em São Paulo (UTC-3), 02:00Z ainda é o dia local anterior:
+    const r6 = await mk(30, SP); // 02:00Z do dia 7 UTC = dia local 6 → não retido
+    await addExpense(r6.id, after(r6.at, 6 * DAY + 14 * HOUR));
+    const r7 = await mk(30, SP); // 02:00Z do dia 14 UTC = dia local 13 → retido
+    await addExpense(r7.id, after(r7.at, 13 * DAY + 14 * HOUR));
     const tooNew = await mk(10); // onboarding há 10 dias: fora da coorte
-    await addEvent(tooNew.id, "expense_created", after(tooNew.at, 8 * DAY - 6 * DAY), manual("quick_entry", "needs"));
+    await addExpense(tooNew.id, after(tooNew.at, 8 * DAY - 6 * DAY));
     const tooOld = await mk(50); // há 50 dias: fora da coorte
-    await addEvent(tooOld.id, "expense_created", after(tooOld.at, 9 * DAY), manual("quick_entry", "needs"));
+    await addExpense(tooOld.id, after(tooOld.at, 9 * DAY));
 
-    const ids = [r1, r2, r3, r4, r5, tooNew, tooOld].map((u) => u.id);
+    const ids = [r1, r2, r3, r4, r5, r6, r7, tooNew, tooOld].map((u) => u.id);
     // independe da janela escolhida
     for (const windowDays of [7, 90]) {
       const m = await getMetrics({ windowDays, onlyUserIds: ids, now: NOW });
-      expect(m.weekTwoRetention).toEqual({ num: 3, den: 5 });
+      expect(m.weekTwoRetention).toEqual({ num: 4, den: 7 });
     }
+
+    // Isolados: no total, os dois casos de fuso se cancelariam sob um erro de fuso.
+    const only = (u: { id: string }) =>
+      getMetrics({ windowDays: 30, onlyUserIds: [u.id], now: NOW }).then((m) => m.weekTwoRetention);
+    expect(await only(r6)).toEqual({ num: 0, den: 1 });
+    expect(await only(r7)).toEqual({ num: 1, den: 1 });
   });
 
   it("lançamentos via notificação, por lembrete enviado", async () => {
@@ -115,20 +171,23 @@ describe("getMetrics", () => {
     expect(m.noSuggestion).toEqual({ num: 1, den: 5 });
   });
 
-  it("ativos em 7 dias e usuários com lembrete ativo", async () => {
-    const [active, inactive, withReminder, withoutReminder] = await Promise.all([
-      newUser(), newUser(), newUser(), newUser(),
-    ]);
-    await addEvent(active, "no_spend_checkin", ago(3), { via: "app" });
-    await addEvent(inactive, "expense_created", ago(10), manual("quick_entry", "needs"));
-    await addEvent(inactive, "reminder_sent", ago(1)); // lembrete recebido não é atividade
-    await prisma.userSettings.create({ data: { userId: withReminder, reminderEnabled: true } });
+  it("ativos em 7 dias (das tabelas) e usuários com lembrete ativo", async () => {
+    const [manualUser, checkinUser, oldUser, recurringUser, reminderOnly, withoutReminder] =
+      await Promise.all([newUser(), newUser(), newUser(), newUser(), newUser(), newUser()]);
+    await addExpense(manualUser, ago(3)); // sem evento algum
+    await addCheckin(checkinUser, isoDate(ago(2)));
+    await addExpense(oldUser, ago(10)); // fora dos últimos 7 dias
+    await addExpense(recurringUser, ago(1), { recurring: true }); // conta fixa não conta
+    await addEvent(reminderOnly, "reminder_sent", ago(1)); // lembrete recebido não conta
+    await prisma.userSettings.create({ data: { userId: reminderOnly, reminderEnabled: true } });
     await prisma.userSettings.create({ data: { userId: withoutReminder, reminderEnabled: false } });
 
     const m = await getMetrics({
-      windowDays: 30, onlyUserIds: [active, inactive, withReminder, withoutReminder], now: NOW,
+      windowDays: 30,
+      onlyUserIds: [manualUser, checkinUser, oldUser, recurringUser, reminderOnly, withoutReminder],
+      now: NOW,
     });
-    expect(m.activeUsers7d).toBe(1);
+    expect(m.activeUsers7d).toBe(2);
     expect(m.usersWithReminder).toBe(1);
   });
 
@@ -138,6 +197,7 @@ describe("getMetrics", () => {
       await addEvent(id, "onboarding_completed", ago(2));
       await addEvent(id, "expense_created", ago(1), manual("quick_entry", "needs"));
       await addEvent(id, "reminder_sent", ago(1));
+      await addExpense(id, ago(1));
       await prisma.userSettings.create({ data: { userId: id, reminderEnabled: true } });
     }
     const base = { windowDays: 30, onlyUserIds: [admin, user], now: NOW };

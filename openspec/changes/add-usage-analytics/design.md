@@ -90,9 +90,13 @@ sozinho engana.
 1. **Conclusão do onboarding** — usuários com `onboarding_completed` na janela ÷
    usuários criados (`user.createdAt`) na janela.
 2. **Retenção na semana 2** — dos usuários que concluíram o onboarding entre 14 e
-   44 dias atrás (coorte com semana 2 completa), quantos registraram algo
-   (`expense_created` manual ou `no_spend_checkin`) entre o dia 7 e o dia 13 após o
-   onboarding.
+   44 dias atrás (coorte com semana 2 completa), quantos registraram algo entre o
+   dia 7 e o dia 13 após o onboarding. "Registrou algo" = gasto manual
+   (`expenses.recurring_expense_id IS NULL`, por `created_at`) ou dia sem gasto
+   (`daily_checkins.date`). Os dias são datas locais do usuário
+   (`user_settings.timezone`, como em `getRegisteredDates`): dia N = data local do
+   onboarding + N, e o intervalo é inclusivo (dias 7 a 13). A janela 7/30/90 não
+   afeta esta métrica.
 3. **Lançamentos via notificação** — `expense_created` com `source = notification`
    ÷ `expense_created` manuais (`quick_entry` + `notification`). Ao lado:
    lembretes enviados na janela e a razão gastos via notificação ÷ lembretes enviados.
@@ -101,8 +105,21 @@ sozinho engana.
    manuais sem sugestão (dicionário não reconheceu), que indica onde ampliar o
    dicionário.
 
-Extras na mesma página: usuários ativos nos últimos 7 dias e total de usuários com
-lembrete ativo.
+Extras na mesma página: usuários ativos nos últimos 7 dias (gasto manual ou dia sem
+gasto em algum dos últimos 7 dias locais; lembrete recebido não conta) e total de
+usuários com lembrete ativo (`user_settings.reminder_enabled`).
+
+**Fonte de cada métrica.** Retenção e usuários ativos são lidos das **tabelas de
+origem** (`expenses`, `daily_checkins`, `user_settings`), não dos eventos, para
+incluir a atividade anterior ao deploy: os eventos só existem a partir dele, e a
+coorte da retenção (14–44 dias atrás) inclui justamente quem usou o app antes. A
+coorte vem de `user_settings.onboarded_at` — uma tabela só, sem agrupamento, e é a
+mesma origem do backfill de `onboarding_completed`. Conclusão do onboarding
+(numerador: evento `onboarding_completed`, com o backfill), lançamentos via
+notificação, acerto da sugestão de balde e lembretes enviados vêm dos **eventos**,
+porque dependem de informação que só o evento guarda (origem, sugestão, envio).
+Consequência: gastos excluídos pelo usuário somem das tabelas e deixam de contar
+na retenção.
 
 - Agregações em SQL (`prisma.$queryRaw` com `Prisma.sql`, parâmetros tipados) em
   `server/metrics.ts`; formatação (`formatRatio(num, den)`) em função pura em

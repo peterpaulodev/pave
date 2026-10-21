@@ -16,8 +16,9 @@ export interface Metrics {
   windowDays: number;
   /** Users created in the window that completed onboarding. */
   onboarding: Ratio;
-  /** Cohort onboarded 14–44 days ago; retained = manual expense or no-spend
-   * check-in on days 7–13 after onboarding. Independent of the window. */
+  /** Cohort onboarded 14–44 days ago (user_settings.onboarded_at); retained =
+   * manual expense or no-spend check-in on local days 7–13 after onboarding,
+   * read from expenses/daily_checkins. Independent of the window. */
   weekTwoRetention: Ratio;
   /** Manual expenses that came from the reminder notification. */
   notificationExpenses: Ratio;
@@ -53,7 +54,6 @@ export async function getMetrics(options: MetricsOptions): Promise<Metrics> {
   const excluded = options.excludeUserIds ?? [];
   const now = options.now ?? new Date();
   const since = new Date(now.getTime() - windowDays * DAY_MS);
-  const weekAgo = new Date(now.getTime() - 7 * DAY_MS);
   // Retention cohort: onboarded between 44 and 14 days ago.
   const cohortFrom = new Date(now.getTime() - 44 * DAY_MS);
   const cohortTo = new Date(now.getTime() - 14 * DAY_MS);
@@ -87,28 +87,34 @@ export async function getMetrics(options: MetricsOptions): Promise<Metrics> {
         AND ${notExcluded(Prisma.sql`u.id`)}
     `),
 
+    // From the source tables, not events, so activity before the analytics
+    // deploy counts. Days are the user's local dates (user_settings.timezone,
+    // as in getRegisteredDates): "day N" = onboarding local date + N.
     ratio(Prisma.sql`
       WITH cohort AS (
-        SELECT e.user_id, MIN(e.created_at) AS onboarded_at
-          FROM events e
-         WHERE e.name = 'onboarding_completed'
-           AND ${notExcluded(Prisma.sql`e.user_id`)}
-         GROUP BY e.user_id
-        HAVING MIN(e.created_at) >= ${cohortFrom}::timestamptz
-           AND MIN(e.created_at) <= ${cohortTo}::timestamptz
+        SELECT s.user_id,
+               s.timezone,
+               (s.onboarded_at AT TIME ZONE s.timezone)::date AS onboarded_day
+          FROM user_settings s
+         WHERE s.onboarded_at >= ${cohortFrom}::timestamptz
+           AND s.onboarded_at <= ${cohortTo}::timestamptz
+           AND ${notExcluded(Prisma.sql`s.user_id`)}
       )
       SELECT
-        COUNT(*) FILTER (WHERE EXISTS (
-          SELECT 1 FROM events a
-           WHERE a.user_id = c.user_id
-             AND a.created_at >= c.onboarded_at + interval '7 days'
-             AND a.created_at <  c.onboarded_at + interval '14 days'
-             AND (
-               a.name = 'no_spend_checkin'
-               OR (a.name = 'expense_created'
-                   AND a.props->>'source' IN ('quick_entry', 'notification'))
-             )
-        ))::int AS num,
+        COUNT(*) FILTER (WHERE
+          EXISTS (
+            SELECT 1 FROM expenses x
+             WHERE x.user_id = c.user_id
+               AND x.recurring_expense_id IS NULL
+               AND (x.created_at AT TIME ZONE c.timezone)::date
+                   BETWEEN c.onboarded_day + 7 AND c.onboarded_day + 13
+          )
+          OR EXISTS (
+            SELECT 1 FROM daily_checkins d
+             WHERE d.user_id = c.user_id
+               AND d.date BETWEEN c.onboarded_day + 7 AND c.onboarded_day + 13
+          )
+        )::int AS num,
         COUNT(*)::int AS den
       FROM cohort c
     `),
@@ -156,15 +162,31 @@ export async function getMetrics(options: MetricsOptions): Promise<Metrics> {
     `),
 
     // Active = registered something themselves (manual expense or no-spend
-    // check-in) in the last 7 days; reminders sent to them don't count.
+    // check-in) on one of the user's last 7 local days — from the source
+    // tables, like retention. Reminders sent to them don't count.
     prisma.$queryRaw<{ n: number }[]>(Prisma.sql`
-      SELECT COUNT(DISTINCT e.user_id)::int AS n
-        FROM events e
-       WHERE e.created_at >= ${weekAgo}::timestamptz AND e.created_at <= ${now}::timestamptz
-         AND (e.name = 'no_spend_checkin'
-              OR (e.name = 'expense_created'
-                  AND e.props->>'source' IN ('quick_entry', 'notification')))
-         AND ${notExcluded(Prisma.sql`e.user_id`)}
+      WITH u AS (
+        SELECT us.id AS user_id,
+               COALESCE(s.timezone, 'America/Sao_Paulo') AS timezone,
+               (${now}::timestamptz AT TIME ZONE COALESCE(s.timezone, 'America/Sao_Paulo'))::date AS today
+          FROM "user" us
+          LEFT JOIN user_settings s ON s.user_id = us.id
+         WHERE ${notExcluded(Prisma.sql`us.id`)}
+      )
+      SELECT COUNT(*)::int AS n
+        FROM u
+       WHERE EXISTS (
+               SELECT 1 FROM expenses x
+                WHERE x.user_id = u.user_id
+                  AND x.recurring_expense_id IS NULL
+                  AND x.created_at <= ${now}::timestamptz
+                  AND (x.created_at AT TIME ZONE u.timezone)::date > u.today - 7
+             )
+          OR EXISTS (
+               SELECT 1 FROM daily_checkins d
+                WHERE d.user_id = u.user_id
+                  AND d.date > u.today - 7 AND d.date <= u.today
+             )
     `),
 
     prisma.$queryRaw<{ n: number }[]>(Prisma.sql`
