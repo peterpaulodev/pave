@@ -16,6 +16,8 @@ const envSchema = z.object({
   VAPID_PRIVATE_KEY: z.string().min(1).optional(),
   VAPID_SUBJECT: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(16).optional(),
+  // Comma-separated Neon Auth user ids allowed into /admin. Unset = nobody.
+  ADMIN_USER_IDS: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

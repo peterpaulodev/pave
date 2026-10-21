@@ -24,15 +24,15 @@
 - [x] 3.10 Revisar todas as chamadas: nenhuma `props` com descrição, valor ou texto livre _(10 chamadas conferidas: só enums, booleanos e `hour`)_
 
 ## 4. Métricas
-- [ ] 4.1 `server/metrics.ts`: as quatro métricas + usuários ativos em 7 dias + usuários com lembrete ativo, parametrizadas por janela e por lista de ids excluídos
-- [ ] 4.2 Retenção na semana 2 conforme D6 (coorte com onboarding entre 14 e 44 dias atrás; registro manual ou dia sem gasto entre os dias 7 e 13)
-- [ ] 4.3 Testes de integração com usuários e eventos sintéticos (datas controladas) para cada métrica, incluindo exclusão dos admins e denominador zero
-- [ ] 4.4 Página `app/(app)/admin/page.tsx`: `notFound()` para não admin; seletor de janela 7/30/90 e toggle "Incluir meus dados" via search params; cards mobile-first com numerador, denominador e percentual
-- [ ] 4.5 Teste: usuário comum recebe 404 em `/admin`
+- [x] 4.1 `server/metrics.ts`: as quatro métricas + usuários ativos em 7 dias + usuários com lembrete ativo, parametrizadas por janela e por lista de ids excluídos _(`onlyUserIds` extra, só para os testes não misturarem com outras linhas do banco dev; "ativos em 7 dias" = gasto manual ou dia sem gasto, lembrete recebido não conta)_
+- [x] 4.2 Retenção na semana 2 conforme D6 (coorte com onboarding entre 14 e 44 dias atrás; registro manual ou dia sem gasto entre os dias 7 e 13) _(intervalos: `[onboarding+7d, onboarding+14d)`; a retenção não depende da janela 7/30/90)_
+- [x] 4.3 Testes de integração com usuários e eventos sintéticos (datas controladas) para cada métrica, incluindo exclusão dos admins e denominador zero
+- [x] 4.4 Página `app/(app)/admin/page.tsx`: `notFound()` para não admin; seletor de janela 7/30/90 e toggle "Incluir meus dados" via search params; cards mobile-first com numerador, denominador e percentual _(janela e toggle são links com search params, validados com zod, valor inválido cai no padrão; validado em 390px sem overflow horizontal)_
+- [x] 4.5 Teste: usuário comum recebe 404 em `/admin` _(`requireAdmin` em `server/admin.ts`, testado em `server/admin.test.ts`; conferido também no dev server: não-admin 404, sem sessão 307 → `/login`)_
 
 ## 5. Validação final
-- [ ] 5.1 Adicionar `ADMIN_USER_IDS` a `lib/env.ts` (opcional; ausente = ninguém é admin) e `.env.example`
-- [ ] 5.2 `pnpm test`, `pnpm test:integration` (branch `dev`), `tsc --noEmit`, `pnpm lint`, `pnpm build`
-- [ ] 5.3 Validar `/admin` em 390px com o bypass de dev
-- [ ] 5.4 Listar o que configurar na Vercel
-- [ ] 5.5 `openspec validate add-usage-analytics --strict`
+- [x] 5.1 Adicionar `ADMIN_USER_IDS` a `lib/env.ts` (opcional; ausente = ninguém é admin) e `.env.example`
+- [x] 5.2 `pnpm test`, `pnpm test:integration` (branch `dev`), `tsc --noEmit`, `pnpm lint`, `pnpm build`
+- [x] 5.3 Validar `/admin` em 390px com o bypass de dev _(bypass de dev com dados sintéticos; `/admin` não aparece na `BottomNav` nem em links do app)_
+- [x] 5.4 Listar o que configurar na Vercel _(ver resposta final: `ADMIN_USER_IDS` em Production e Preview)_
+- [x] 5.5 `openspec validate add-usage-analytics --strict` _(válido)_
