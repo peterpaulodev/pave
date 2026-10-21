@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { splitIncome, type Bucket } from "@/lib/domain/buckets";
 import { currentPeriod } from "@/lib/domain/period";
-import { applyRecurringInTransaction } from "./recurring";
+import { applyRecurringInTransaction, trackRecurringLaunched } from "./recurring";
 
 // Every function here takes `userId` explicitly — it always comes from the
 // caller's session (via getSessionUserOrRedirect()), never from client
@@ -96,7 +96,7 @@ export async function getOrCreateCycle(userId: string, period: string) {
   const { needs, wants, savings } = splitIncome(incomeCents);
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    const { cycle, launched } = await prisma.$transaction(async (tx) => {
       const created = await tx.budgetCycle.create({
         data: {
           userId,
@@ -107,9 +107,15 @@ export async function getOrCreateCycle(userId: string, period: string) {
           savingsLimitCents: savings,
         },
       });
-      await applyRecurringInTransaction(tx, userId, created.id);
-      return tx.budgetCycle.findUniqueOrThrow({ where: { id: created.id } });
+      const launched = await applyRecurringInTransaction(tx, userId, created.id);
+      const cycle = await tx.budgetCycle.findUniqueOrThrow({
+        where: { id: created.id },
+      });
+      return { cycle, launched };
     });
+    // Only after the commit, so a rolled-back launch never emits events.
+    trackRecurringLaunched(userId, launched);
+    return cycle;
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -126,6 +132,9 @@ export async function getOrCreateCycle(userId: string, period: string) {
 export interface OnboardingResult {
   settings: NonNullable<Awaited<ReturnType<typeof getUserSettings>>>;
   cycle: Awaited<ReturnType<typeof getOrCreateCycle>>;
+  /** False when the user was already onboarded (a retried submit) or lost
+   * the race to a concurrent one — what gates `onboarding_completed`. */
+  firstCompletion: boolean;
 }
 
 /**
@@ -153,7 +162,7 @@ export async function completeOnboarding(
       userId,
       currentPeriod(settings.timezone)
     );
-    return { settings, cycle };
+    return { settings, cycle, firstCompletion: false };
   }
 
   const timezone = settings?.timezone ?? "America/Sao_Paulo";
@@ -185,7 +194,7 @@ export async function completeOnboarding(
         update: {},
       }),
     ]);
-    return { settings: updatedSettings, cycle };
+    return { settings: updatedSettings, cycle, firstCompletion: true };
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -197,7 +206,7 @@ export async function completeOnboarding(
           where: { userId_period: { userId, period } },
         }),
       ]);
-      return { settings: updatedSettings, cycle };
+      return { settings: updatedSettings, cycle, firstCompletion: false };
     }
     throw error;
   }
@@ -269,10 +278,27 @@ export async function deleteExpense(
   userId: string,
   expenseId: string
 ): Promise<boolean> {
+  return (await removeExpense(userId, expenseId)) !== null;
+}
+
+/** Like `deleteExpense`, but also tells whether the deleted expense was an
+ * automatic one from a recurring bill (for analytics). `null` when nothing
+ * was deleted. */
+export async function removeExpense(
+  userId: string,
+  expenseId: string
+): Promise<{ wasRecurring: boolean } | null> {
+  const expense = await prisma.expense.findFirst({
+    where: { id: expenseId, userId },
+    select: { recurringExpenseId: true },
+  });
+  if (!expense) return null;
   const { count } = await prisma.expense.deleteMany({
     where: { id: expenseId, userId },
   });
-  return count > 0;
+  return count > 0
+    ? { wasRecurring: expense.recurringExpenseId !== null }
+    : null;
 }
 
 /**

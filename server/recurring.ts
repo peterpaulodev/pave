@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import type { Bucket } from "@/lib/domain/buckets";
 import { resolveDueDate } from "@/lib/domain/recurring";
+import { trackEvents } from "@/server/analytics";
 
 // Same rule as queries.ts: every function takes `userId` from the caller's
 // session (never from client input) and scopes every query by it. Mutations
@@ -109,19 +110,19 @@ function dueDateAsDate(period: string, dayOfMonth: number): Date {
  * conditional update — a concurrent caller blocks on that row, then sees it
  * already set and does nothing — so deleting an automatic expense never
  * leads to it being recreated. `skipDuplicates` plus the unique
- * (recurringExpenseId, cycleId) is a second safety net. Returns how many
- * expenses were created.
+ * (recurringExpenseId, cycleId) is a second safety net. Returns the bucket
+ * of each expense actually created (for analytics; its length is the count).
  */
 export async function applyRecurringInTransaction(
   tx: Prisma.TransactionClient,
   userId: string,
   cycleId: string
-): Promise<number> {
+): Promise<Bucket[]> {
   const claimed = await tx.budgetCycle.updateMany({
     where: { id: cycleId, userId, recurringAppliedAt: null },
     data: { recurringAppliedAt: new Date() },
   });
-  if (claimed.count === 0) return 0;
+  if (claimed.count === 0) return [];
 
   const [cycle, templates] = await Promise.all([
     tx.budgetCycle.findFirstOrThrow({ where: { id: cycleId, userId } }),
@@ -129,9 +130,9 @@ export async function applyRecurringInTransaction(
       where: { userId, active: true, deletedAt: null },
     }),
   ]);
-  if (templates.length === 0) return 0;
+  if (templates.length === 0) return [];
 
-  const { count } = await tx.expense.createMany({
+  const created = await tx.expense.createManyAndReturn({
     data: templates.map((template) => ({
       userId,
       cycleId,
@@ -142,17 +143,35 @@ export async function applyRecurringInTransaction(
       occurredOn: dueDateAsDate(cycle.period, template.dayOfMonth),
     })),
     skipDuplicates: true,
+    select: { bucket: true },
   });
-  return count;
+  return created.map((expense) => expense.bucket);
 }
 
-export function applyRecurringToCycle(
+/** One `expense_created` (source `recurring`, no suggestion) per expense
+ * launched — a single batched write, scheduled after the commit. */
+export function trackRecurringLaunched(userId: string, buckets: Bucket[]): void {
+  trackEvents(
+    userId,
+    "expense_created",
+    buckets.map((bucket) => ({
+      source: "recurring" as const,
+      bucket,
+      suggestedBucket: null,
+      overridden: false,
+    }))
+  );
+}
+
+export async function applyRecurringToCycle(
   userId: string,
   cycleId: string
 ): Promise<number> {
-  return prisma.$transaction((tx) =>
+  const buckets = await prisma.$transaction((tx) =>
     applyRecurringInTransaction(tx, userId, cycleId)
   );
+  trackRecurringLaunched(userId, buckets);
+  return buckets.length;
 }
 
 export function countRecurring(userId: string): Promise<number> {

@@ -100,7 +100,7 @@ describe("cron de lembretes (integration)", () => {
     expect(notifiedEndpoints()).toEqual(due.endpoints);
     expect(JSON.parse(sendNotification.mock.calls[0][1] as string)).toMatchObject({
       body: "Gastou algo hoje? Leva 5 segundos para registrar.",
-      url: "/novo",
+      url: "/novo?src=notification",
     });
   });
 

@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { localDate } from "@/lib/domain/local-date";
 import { getUserSettings } from "@/server/queries";
 import { markNoSpend } from "@/server/checkin";
+import { trackEvent } from "@/server/analytics";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,7 +19,9 @@ export async function POST() {
 
   const settings = await getUserSettings(user.id);
   const timezone = settings?.timezone ?? "America/Sao_Paulo";
-  await markNoSpend(user.id, localDate(timezone));
+  if (await markNoSpend(user.id, localDate(timezone))) {
+    trackEvent(user.id, "no_spend_checkin", { via: "notification" });
+  }
 
   return NextResponse.json({ ok: true });
 }

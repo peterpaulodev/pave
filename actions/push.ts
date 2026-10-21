@@ -3,7 +3,8 @@
 import { headers } from "next/headers";
 import { z } from "zod";
 import { getSessionUserOrRedirect } from "@/lib/auth/session";
-import { upsertUserSettings } from "@/server/queries";
+import { getUserSettings, upsertUserSettings } from "@/server/queries";
+import { trackEvent } from "@/server/analytics";
 import {
   removePushSubscription as removeForUser,
   upsertPushSubscription,
@@ -57,9 +58,18 @@ export async function setReminderSettings(
   if (!parsed.success) return { error: "Horário inválido" };
 
   const { id: userId } = await getSessionUserOrRedirect();
+  const wasEnabled = (await getUserSettings(userId))?.reminderEnabled ?? false;
   await upsertUserSettings(userId, {
     reminderEnabled: parsed.data.enabled,
     reminderHour: parsed.data.hour,
   });
+
+  // Only on/off transitions: changing the hour of an enabled reminder is
+  // neither an activation nor a deactivation.
+  if (parsed.data.enabled && !wasEnabled) {
+    trackEvent(userId, "reminder_enabled", { hour: parsed.data.hour });
+  } else if (!parsed.data.enabled && wasEnabled) {
+    trackEvent(userId, "reminder_disabled", {});
+  }
   return { ok: true };
 }

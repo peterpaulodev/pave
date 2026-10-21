@@ -4,10 +4,12 @@ import { z } from "zod";
 import { getSessionUserOrRedirect } from "@/lib/auth/session";
 import {
   createExpense as createExpenseForUser,
-  deleteExpense as deleteExpenseForUser,
   getOrCreateCycle,
   getUserSettings,
+  removeExpense,
 } from "@/server/queries";
+import { trackEvent } from "@/server/analytics";
+import { suggestBucket } from "@/lib/domain/suggest-bucket";
 import { currentPeriod, todayInTimezone } from "@/lib/domain/period";
 
 const createExpenseSchema = z.object({
@@ -17,6 +19,9 @@ const createExpenseSchema = z.object({
     .positive({ message: "Informe um valor maior que zero" }),
   description: z.string().trim().min(1, "Informe uma descrição"),
   bucket: z.enum(["needs", "wants", "savings"]),
+  // Only for metrics (design.md D3): "recurring" is never accepted from the
+  // client, and the bucket suggestion is recomputed here, not trusted.
+  source: z.enum(["quick_entry", "notification"]).default("quick_entry"),
 });
 
 export type CreateExpenseInput = z.input<typeof createExpenseSchema>;
@@ -50,6 +55,14 @@ export async function createExpense(
     occurredOn: new Date(`${todayInTimezone(timezone)}T00:00:00.000Z`),
   });
 
+  const suggestedBucket = suggestBucket(parsed.data.description);
+  trackEvent(userId, "expense_created", {
+    source: parsed.data.source,
+    bucket: parsed.data.bucket,
+    suggestedBucket,
+    overridden: suggestedBucket !== null && suggestedBucket !== parsed.data.bucket,
+  });
+
   return { data: { id: expense.id } };
 }
 
@@ -58,6 +71,7 @@ export async function deleteExpense(
   expenseId: string
 ): Promise<{ data: { deleted: boolean } }> {
   const { id: userId } = await getSessionUserOrRedirect();
-  const deleted = await deleteExpenseForUser(userId, expenseId);
-  return { data: { deleted } };
+  const removed = await removeExpense(userId, expenseId);
+  if (removed) trackEvent(userId, "expense_deleted", removed);
+  return { data: { deleted: removed !== null } };
 }

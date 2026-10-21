@@ -12,16 +12,16 @@
 - [x] 2.5 Teste: `trackEvent` com falha de banco não lança erro para quem chamou _(`server/analytics.test.ts`, mocks sem banco; fica em `server/` porque o config raiz exclui `server/**`, então roda no `pnpm test:integration`. Há também `server/analytics-db.test.ts`, com escrita real e cascade na `dev`.)_
 
 ## 3. Instrumentação
-- [ ] 3.1 `completeOnboarding` → `onboarding_completed`
-- [ ] 3.2 `createExpense` → `expense_created` com `source` (zod enum, default `quick_entry`), `suggestedBucket` recalculado no servidor com `suggestBucket`, `overridden`
-- [ ] 3.3 Tela `/novo`: ler `src=notification` da URL e enviar `source` num campo hidden; no SW, a notificação abre `/novo?src=notification`
-- [ ] 3.4 `applyRecurringToCycle` e "Lançar também neste mês" → um `expense_created` com `source: recurring` por gasto (em lote, `createMany`)
-- [ ] 3.5 `deleteExpense` → `expense_deleted` com `wasRecurring`
-- [ ] 3.6 `createRecurring` → `recurring_created`
-- [ ] 3.7 Ativar/desativar lembrete → `reminder_enabled` (com `hour`) / `reminder_disabled`
-- [ ] 3.8 Cron de lembretes → `reminder_sent` em lote para os usuários com envio bem-sucedido
-- [ ] 3.9 `markNoSpend` → `no_spend_checkin` com `via` (`app` ou `notification`)
-- [ ] 3.10 Revisar todas as chamadas: nenhuma `props` com descrição, valor ou texto livre
+- [x] 3.1 `completeOnboarding` → `onboarding_completed` _(só no primeiro envio: `completeOnboarding` ganhou `firstCompletion`; um duplo clique concorrente pode, em tese, gravar 2 eventos, o que não afeta a métrica por usuário)_
+- [x] 3.2 `createExpense` → `expense_created` com `source` (zod enum, default `quick_entry`), `suggestedBucket` recalculado no servidor com `suggestBucket`, `overridden` _(`source` só aceita `quick_entry`/`notification`: qualquer outro valor, inclusive `recurring`, é rejeitado pelo zod; `suggestedBucket` enviado pelo cliente é ignorado)_
+- [x] 3.3 Tela `/novo`: ler `src=notification` da URL e enviar `source` num campo hidden; no SW, a notificação abre `/novo?src=notification` _(a página lê `src` de `searchParams` e passa `source` como prop ao form, que o envia na chamada da action; não há `<form>` nativo, então não existe campo hidden. `DEFAULT_URL` do SW e `REMINDER_PAYLOAD.url` agora são `/novo?src=notification`; foco/autoFocus e o fallback não mudaram)_
+- [x] 3.4 `applyRecurringToCycle` e "Lançar também neste mês" → um `expense_created` com `source: recurring` por gasto (em lote, `createMany`) _(`applyRecurringInTransaction` passou a devolver os baldes criados via `createManyAndReturn`; o evento é agendado após o commit, em `getOrCreateCycle` e `applyRecurringToCycle`; `createRecurringAction` com `alsoThisMonth` grava um `expense_created` recurring)_
+- [x] 3.5 `deleteExpense` → `expense_deleted` com `wasRecurring` _(`removeExpense` devolve `wasRecurring`; o "Desfazer" do toast também chama `deleteExpense` e, portanto, gera `expense_deleted`)_
+- [x] 3.6 `createRecurring` → `recurring_created`
+- [x] 3.7 Ativar/desativar lembrete → `reminder_enabled` (com `hour`) / `reminder_disabled` _(só em transição: trocar o horário de um lembrete já ativo não gera evento)_
+- [x] 3.8 Cron de lembretes → `reminder_sent` em lote para os usuários com envio bem-sucedido _(em `runReminderCron`, um `createMany` só para quem teve envio com sucesso)_
+- [x] 3.9 `markNoSpend` → `no_spend_checkin` com `via` (`app` ou `notification`) _(`markNoSpend` passou a devolver se criou o check-in e só então grava o evento; repetir o mesmo dia não duplica)_
+- [x] 3.10 Revisar todas as chamadas: nenhuma `props` com descrição, valor ou texto livre _(10 chamadas conferidas: só enums, booleanos e `hour`)_
 
 ## 4. Métricas
 - [ ] 4.1 `server/metrics.ts`: as quatro métricas + usuários ativos em 7 dias + usuários com lembrete ativo, parametrizadas por janela e por lista de ids excluídos

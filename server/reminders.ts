@@ -3,11 +3,13 @@ import { prisma } from "@/lib/db";
 import { localDate, localHour } from "@/lib/domain/local-date";
 import { getRegisteredDates } from "@/server/checkin";
 import { sendToUser, type PushPayload } from "@/lib/push/web-push";
+import { trackEvents } from "@/server/analytics";
 
 export const REMINDER_PAYLOAD: PushPayload = {
   title: "Pave",
   body: "Gastou algo hoje? Leva 5 segundos para registrar.",
-  url: "/novo",
+  // src=notification lets /novo tag the expense as coming from the reminder.
+  url: "/novo?src=notification",
 };
 
 export interface ReminderCandidate {
@@ -91,11 +93,17 @@ export async function runReminderCron(
 
   let sent = 0;
   let removedSubscriptions = 0;
-  for (const outcome of outcomes) {
-    if (outcome.status !== "fulfilled" || outcome.value === null) continue;
-    if (outcome.value.sent > 0) sent += 1;
+  const sentUserIds: string[] = [];
+  outcomes.forEach((outcome, index) => {
+    if (outcome.status !== "fulfilled" || outcome.value === null) return;
+    if (outcome.value.sent > 0) {
+      sent += 1;
+      sentUserIds.push(due[index].userId);
+    }
     removedSubscriptions += outcome.value.removed;
-  }
+  });
+
+  trackEvents(sentUserIds, "reminder_sent", sentUserIds.map(() => ({})));
 
   return { checked, sent, removedSubscriptions };
 }

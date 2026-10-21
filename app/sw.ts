@@ -31,7 +31,7 @@ interface ReminderPushData {
 }
 
 const NO_SPEND_ACTION = "no-spend";
-const DEFAULT_URL = "/novo";
+const DEFAULT_URL = "/novo?src=notification";
 
 self.addEventListener("push", (event) => {
   let data: ReminderPushData = {};

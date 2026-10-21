@@ -5,6 +5,19 @@ config({ path: [".env.local", ".env"] });
 
 vi.mock("server-only", () => ({}));
 
+// `after()` throws outside a request scope. Queue its callbacks instead so
+// the server code under test can call it (see server/testing/after-queue.ts).
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  const { afterQueue } = await import("./server/testing/after-queue");
+  return {
+    ...actual,
+    after: (callback: () => Promise<void> | void) => {
+      afterQueue().push(callback);
+    },
+  };
+});
+
 // Guard against accidentally running integration tests (which write and
 // delete real rows) against a database that isn't a disposable dev/test
 // branch. Neon exposes the branch name as NEON_BRANCH.

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSessionUserOrRedirect } from "@/lib/auth/session";
 import { completeOnboarding as completeOnboardingForUser } from "@/server/queries";
+import { trackEvent } from "@/server/analytics";
 
 const incomeCentsSchema = z
   .number()
@@ -32,7 +33,9 @@ export async function completeOnboarding(
   }
 
   const { id: userId } = await getSessionUserOrRedirect();
-  await completeOnboardingForUser(userId, parsed.data);
+  const { firstCompletion } = await completeOnboardingForUser(userId, parsed.data);
+  // Scheduled before redirect(): after() still runs when redirect throws.
+  if (firstCompletion) trackEvent(userId, "onboarding_completed", {});
 
   redirect("/?onboarded=1");
 }

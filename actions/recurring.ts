@@ -10,6 +10,7 @@ import {
   updateRecurring,
 } from "@/server/recurring";
 import { currentPeriod } from "@/lib/domain/period";
+import { trackEvent } from "@/server/analytics";
 
 // userId always comes from the session; the cycle for "Lançar também neste
 // mês" is resolved here from the user's own time zone — the client never
@@ -65,6 +66,19 @@ export async function createRecurringAction(
   }
 
   await createRecurring(userId, { ...parsed.data, alsoThisMonth: cycleRef });
+
+  trackEvent(userId, "recurring_created", {
+    bucket: parsed.data.bucket,
+    alsoThisMonth: cycleRef !== undefined,
+  });
+  if (cycleRef) {
+    trackEvent(userId, "expense_created", {
+      source: "recurring",
+      bucket: parsed.data.bucket,
+      suggestedBucket: null,
+      overridden: false,
+    });
+  }
   return { ok: true };
 }
 

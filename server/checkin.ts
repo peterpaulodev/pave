@@ -3,13 +3,15 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 
 /** Marks the local day `date` ("YYYY-MM-DD") as registered without an
- * expense. Idempotent: calling it again for the same day is a no-op. */
-export async function markNoSpend(userId: string, date: string): Promise<void> {
-  await prisma.dailyCheckin.upsert({
-    where: { userId_date: { userId, date: new Date(`${date}T00:00:00.000Z`) } },
-    create: { userId, date: new Date(`${date}T00:00:00.000Z`) },
-    update: {},
+ * expense. Idempotent: calling it again for the same day is a no-op.
+ * Returns whether the check-in was newly created (analytics counts each
+ * day once). */
+export async function markNoSpend(userId: string, date: string): Promise<boolean> {
+  const { count } = await prisma.dailyCheckin.createMany({
+    data: [{ userId, date: new Date(`${date}T00:00:00.000Z`) }],
+    skipDuplicates: true,
   });
+  return count > 0;
 }
 
 /**

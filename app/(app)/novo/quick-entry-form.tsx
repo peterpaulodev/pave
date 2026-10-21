@@ -12,7 +12,11 @@ import { createExpense, deleteExpense } from "@/actions/expenses";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function QuickEntryForm() {
+export function QuickEntryForm({
+  source = "quick_entry",
+}: {
+  source?: "quick_entry" | "notification";
+}) {
   const [input, setInput] = useState("");
   // null until the user taps the toggle themselves — until then, the
   // effective bucket below is derived from the description (7.2/7.3).
@@ -47,6 +51,7 @@ export function QuickEntryForm() {
         amountCents: parsed.amountCents,
         description: parsed.description,
         bucket,
+        source,
       });
 
       if (!result.data) {
