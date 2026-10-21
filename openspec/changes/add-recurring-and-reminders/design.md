@@ -31,6 +31,10 @@ sem alterar o fluxo de onboarding nem o lançamento rápido existente.
   Função pura `resolveDueDate(period, dayOfMonth): string` em `lib/domain/recurring.ts`.
 - Editar o template afeta apenas ciclos futuros. Gastos já lançados não mudam.
 - Excluir/pausar o template não remove gastos já lançados.
+- **Exclusão é soft delete** (`deletedAt` + `active = false`): o template some da
+  listagem e não é mais aplicado, mas os gastos já lançados mantêm o vínculo
+  (`recurringExpenseId`) e, portanto, o selo "Fixa" e a soma "em contas fixas". A FK
+  `ON DELETE SET NULL` só agiria numa exclusão física, que o app não faz.
 
 ### D2 — Materialização no ciclo, uma única vez
 - Ao criar um ciclo (`getOrCreateCycle`), as contas fixas ativas viram `Expense`
@@ -90,9 +94,20 @@ sem alterar o fluxo de onboarding nem o lançamento rápido existente.
   local for igual a `reminderHour` e não houver gasto nem check-in na data local.
 - Idempotência: `UserSettings.lastReminderSentOn` (date). Não envia duas vezes no
   mesmo dia local, mesmo se o cron disparar duplicado.
-- **Agendador:** Vercel Cron exige plano Pro para frequência horária. Em Hobby,
-  usar **GitHub Actions** (`schedule: cron: '0 * * * *'`) chamando o endpoint com
-  o segredo. Decidir em Open Questions.
+- **Agendador (decisão): GitHub Actions**, grátis e sem depender do plano da Vercel
+  (Vercel Cron em frequência horária exige Pro). O workflow
+  `.github/workflows/reminders-cron.yml` roda com `schedule: cron: '7 * * * *'`
+  (minuto 7 para fugir do pico do minuto 0; a comparação é por hora local, então o
+  minuto não importa) e `workflow_dispatch` para teste manual. Faz um
+  `curl -fsS --max-time 60 -X POST "$APP_URL/api/cron/reminders"` com
+  `Authorization: Bearer $CRON_SECRET` e `timeout-minutes: 5`.
+- O endpoint aceita **POST** e responde JSON `{ checked, sent, removedSubscriptions }`
+  (usuários avaliados, usuários notificados, inscrições expiradas removidas).
+  `/api/cron` fica fora do matcher do `proxy.ts`: sem isso o middleware do Neon Auth
+  responderia 307 para `/login` e o `curl -f` reportaria sucesso sem enviar nada.
+- O envio é *at-most-once* por dia local: antes de enviar, o servidor reivindica o dia
+  com `updateMany ... lastReminderSentOn <> hoje`. Se todas as tentativas falharem por
+  motivo transitório, o lembrete daquele dia se perde (aceitável).
 - `reminderHour` inteiro 0–23, default `20`. Opções na UI: 18h a 23h.
 
 ### D8 — Dias seguidos e "Não gastei nada hoje"
@@ -118,6 +133,7 @@ model RecurringExpense {
   bucket      Bucket
   dayOfMonth  Int      @map("day_of_month")   // CHECK 1..31
   active      Boolean  @default(true)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)  // soft delete (D1)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -225,10 +241,11 @@ actions/
 3. Aplicar na branch `dev`; rodar `test:integration`
 4. Produção: `prisma migrate deploy` (já no build com `VERCEL_ENV=production`)
 5. Gerar VAPID (`npx web-push generate-vapid-keys`) e configurar envs + `CRON_SECRET`
-   na Vercel (Production e Preview) e no GitHub (secret do workflow)
+   na Vercel (Production e Preview) e, no GitHub, os secrets `CRON_SECRET` e `APP_URL`
+   (URL de produção, sem barra final) do workflow
 
 ## Open Questions
-- Agendador: Vercel Cron (Pro) ou GitHub Actions (grátis)?
+- ~~Agendador: Vercel Cron (Pro) ou GitHub Actions (grátis)?~~ **Decidido: GitHub Actions** (D7).
 - Oferecer "Adicionar contas fixas" como passo opcional logo após o onboarding,
   ou só pelo painel/estado vazio?
 - Horário do lembrete: só 18h–23h ou qualquer hora?

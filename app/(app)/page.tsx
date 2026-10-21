@@ -10,6 +10,8 @@ import {
 } from "@/server/queries";
 import { currentPeriod } from "@/lib/domain/period";
 import { localDate } from "@/lib/domain/local-date";
+import { computeStreak } from "@/lib/domain/streak";
+import { getRegisteredDates, hasManualExpense } from "@/server/checkin";
 import { countRecurring, getRecurringTotalsByBucket } from "@/server/recurring";
 import { formatBRL } from "@/lib/money";
 import { BUCKET_LABELS, BUCKET_ORDER } from "@/lib/domain/buckets";
@@ -17,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteExpenseButton } from "./delete-expense-button";
 import { RecurringNotice } from "./recurring-notice";
+import { NoSpendButton } from "./no-spend-button";
+import { ReminderInvite } from "./reminder-invite";
 
 export const dynamic = "force-dynamic";
 
@@ -48,11 +52,41 @@ export default async function PainelPage() {
     countRecurring(userId),
   ]);
   const today = localDate(timezone);
+  const [registeredDates, hasSavedExpense] = await Promise.all([
+    getRegisteredDates(userId, timezone),
+    hasManualExpense(userId),
+  ]);
+  const registeredToday = registeredDates.includes(today);
+  const streak = computeStreak(registeredDates, today);
   const hasAutomaticExpenses = expenses.some((e) => e.recurringExpenseId);
 
   return (
     <div className="flex flex-col gap-6 pb-20">
       <h1 className="text-xl font-semibold">Seu mês</h1>
+
+      <Card size="sm">
+        <CardContent className="flex flex-col gap-2">
+          {streak > 0 ? (
+            <p className="text-sm font-medium">
+              {streak} {streak === 1 ? "dia seguido" : "dias seguidos"}
+              {!registeredToday && (
+                <span className="font-normal text-muted-foreground">
+                  {" "}
+                  · registre hoje para continuar
+                </span>
+              )}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Comece uma sequência: registre um gasto ou marque que não gastou
+              nada hoje.
+            </p>
+          )}
+          {!registeredToday && <NoSpendButton />}
+        </CardContent>
+      </Card>
+
+      {hasSavedExpense && !settings?.reminderEnabled && <ReminderInvite />}
 
       {hasAutomaticExpenses && <RecurringNotice period={period} />}
 

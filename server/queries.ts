@@ -57,6 +57,9 @@ export interface UpsertUserSettingsInput {
   timezone?: string;
   defaultIncomeCents?: number;
   onboardedAt?: Date;
+  reminderEnabled?: boolean;
+  reminderHour?: number;
+  lastReminderSentOn?: Date | null;
 }
 
 export function upsertUserSettings(

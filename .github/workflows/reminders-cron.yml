@@ -1,0 +1,21 @@
+name: Reminders cron
+
+# Calls the app's reminder endpoint every hour. The endpoint compares each
+# user's *local hour*, so the minute doesn't matter: minute 7 just avoids the
+# top-of-the-hour load spike on GitHub's scheduler. Schedules can run a few
+# minutes late; that's fine for a daily reminder (design.md D7).
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/reminders
+        run: |
+          curl -fsS --max-time 60 -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/reminders"

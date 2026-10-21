@@ -22,11 +22,12 @@ export async function markNoSpend(userId: string, date: string): Promise<void> {
 export async function getRegisteredDates(
   userId: string,
   timeZone: string,
-  days = 60
+  days = 60,
+  now: Date = new Date()
 ): Promise<string[]> {
   const rows = await prisma.$queryRaw<{ day: string }[]>(Prisma.sql`
     WITH bounds AS (
-      SELECT (now() AT TIME ZONE ${timeZone})::date - ${days}::int AS since
+      SELECT (${now}::timestamptz AT TIME ZONE ${timeZone})::date - ${days}::int AS since
     )
     SELECT to_char(e.created_at AT TIME ZONE ${timeZone}, 'YYYY-MM-DD') AS day
       FROM expenses e, bounds
@@ -41,4 +42,14 @@ export async function getRegisteredDates(
     ORDER BY day
   `);
   return rows.map((row) => row.day);
+}
+
+/** Whether the user has ever saved a manual (non-recurring) expense — what
+ * triggers the reminder invite right after the first expense. */
+export async function hasManualExpense(userId: string): Promise<boolean> {
+  const found = await prisma.expense.findFirst({
+    where: { userId, recurringExpenseId: null },
+    select: { id: true },
+  });
+  return found !== null;
 }

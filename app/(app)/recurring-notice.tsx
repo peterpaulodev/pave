@@ -1,50 +1,37 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { readStorage, subscribeStorage, writeStorage } from "@/lib/safe-storage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Shown once per month (per period) until dismissed. localStorage can throw
-// or be empty (private window, blocked site data), so every access is
-// wrapped and the notice simply stays hidden if storage is unavailable.
+// Shown once per month (per period) until dismissed. If storage is
+// unavailable the notice stays hidden rather than nagging on every visit.
 function storageKey(period: string) {
   return `pave:recurring-notice:${period}`;
 }
 
-const listeners = new Set<() => void>();
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-function wasDismissed(period: string): boolean {
+function storageWorks(): boolean {
   try {
-    return window.localStorage.getItem(storageKey(period)) === "1";
+    window.localStorage.getItem("pave:probe");
+    return true;
   } catch {
-    return true; // storage unavailable — keep the notice hidden
+    return false;
   }
 }
 
 export function RecurringNotice({ period }: { period: string }) {
   // Server snapshot is "dismissed" so nothing flashes before hydration.
   const dismissed = useSyncExternalStore(
-    subscribe,
-    () => wasDismissed(period),
+    subscribeStorage,
+    () => readStorage(storageKey(period)) !== null || !storageWorks(),
     () => true
   );
 
   if (dismissed) return null;
 
   function dismiss() {
-    try {
-      window.localStorage.setItem(storageKey(period), "1");
-    } catch {
-      // ignore: it just may show again next visit
-    }
-    listeners.forEach((listener) => listener());
+    writeStorage(storageKey(period), "1");
   }
 
   return (

@@ -81,15 +81,18 @@ model Expense {
 // ─────────────────────────────────────────────
 
 model RecurringExpense {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @map("user_id")
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id")
   description String
-  amountCents Int      @map("amount_cents") // > 0 (CHECK na migration)
+  amountCents Int       @map("amount_cents") // > 0 (CHECK na migration)
   bucket      Bucket
-  dayOfMonth  Int      @map("day_of_month") // 1..31 (CHECK na migration)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  dayOfMonth  Int       @map("day_of_month") // 1..31 (CHECK na migration)
+  active      Boolean   @default(true)
+  // Soft delete: a "deleted" template is kept (so the expenses it launched
+  // keep their "Fixa" badge and link) but hidden and never applied again.
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   expenses Expense[]

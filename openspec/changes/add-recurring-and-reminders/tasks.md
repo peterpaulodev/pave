@@ -36,23 +36,23 @@
 - [x] 5.4 Texto explicativo na primeira vez que gastos automáticos aparecerem no mês (o aviso fica visível até o usuário tocar em "Entendi" e então some pelo resto do mês (chave `pave:recurring-notice:<período>` no localStorage, com try/catch))
 
 ## 6. Web Push — infraestrutura
-- [ ] 6.1 Instalar `web-push` (+ `@types/web-push`); adicionar envs `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET` ao `lib/env.ts` e `.env.example`
-- [ ] 6.2 `lib/push/web-push.ts`: `sendToUser(userId, payload)` com `Promise.allSettled`, removendo subscription em 404/410
-- [ ] 6.3 `app/sw.ts`: handlers `push` (exibe notificação com `data.url` e ação "Não gastei nada") e `notificationclick` (foca janela existente ou abre `/novo`; ação dispara `POST /api/checkin/no-spend`)
-- [ ] 6.4 Rota `app/api/checkin/no-spend/route.ts` autenticada pela sessão (usada pela ação da notificação)
-- [ ] 6.5 `lib/push/client.ts`: `subscribeToPush()` com `pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })`
-- [ ] 6.6 `actions/push.ts`: `savePushSubscription` (upsert por `endpoint`) e `removePushSubscription`
+- [x] 6.1 Instalar `web-push` (+ `@types/web-push`); adicionar envs `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET` ao `lib/env.ts` e `.env.example` (`lib/env.ts` recebe as envs como opcionais, para o app subir sem elas; `sendToUser` e a rota de cron falham com erro claro quando faltam. Também entraram `SHADOW_DATABASE_URL` e `DEV_AUTH_BYPASS_USER_ID` no `.env.example`)
+- [x] 6.2 `lib/push/web-push.ts`: `sendToUser(userId, payload)` com `Promise.allSettled`, removendo subscription em 404/410
+- [x] 6.3 `app/sw.ts`: handlers `push` (exibe notificação com `data.url` e ação "Não gastei nada") e `notificationclick` (foca janela existente ou abre `/novo`; ação dispara `POST /api/checkin/no-spend`) (o `serwist.addEventListeners()` só registra install/activate/fetch/message, então `push` e `notificationclick` convivem no mesmo `sw.ts` sem afetar o precache. A ação "Não gastei nada" faz `fetch(..., { credentials: "include", redirect: "manual" })`; o fetch é same-origin, então os cookies de sessão do Neon Auth seguem junto. Qualquer resposta que não seja 2xx (inclusive o redirect para /login de sessão expirada) cai no fallback de abrir/focar `/novo`. Não dá para provar o envio de cookies num SW em headless; isso fica para o teste em aparelho real (8.2))
+- [x] 6.4 Rota `app/api/checkin/no-spend/route.ts` autenticada pela sessão (usada pela ação da notificação) (usa o novo `getSessionUser()` (sem redirect) e responde 401 JSON sem sessão, já que um redirect para /login pareceria um 200 para o SW; também é a única forma de o endpoint funcionar sem seguir redirecionamentos)
+- [x] 6.5 `lib/push/client.ts`: `subscribeToPush()` com `pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })`
+- [x] 6.6 `actions/push.ts`: `savePushSubscription` (upsert por `endpoint`) e `removePushSubscription`
 
 ## 7. Lembrete — UI e envio (spec: daily-reminder)
-- [ ] 7.1 Card de convite após o primeiro gasto: "Ativar" / "Agora não" (adiamento de 7 dias em `localStorage` com try/catch)
-- [ ] 7.2 `Notification.requestPermission()` apenas no clique; no iOS fora do standalone, mostrar instrução de instalação
-- [ ] 7.3 Página `/(app)/configuracoes`: ativar/desativar lembrete, horário (18h–23h), estado "permissão negada" com instrução
-- [ ] 7.4 `server/reminders.ts`: `findUsersToRemind(nowUtc)` — lembrete ativo, hora local = `reminderHour`, `lastReminderSentOn` ≠ hoje local, sem registro no dia
-- [ ] 7.5 `app/api/cron/reminders/route.ts`: valida `Bearer CRON_SECRET` (401 se inválido), envia, grava `lastReminderSentOn`
-- [ ] 7.6 Agendador conforme decisão da Open Question: `vercel.json` (`"0 * * * *"`) ou `.github/workflows/reminders-cron.yml`
-- [ ] 7.7 Botão "Não gastei nada hoje" no painel (some quando o dia já está registrado)
-- [ ] 7.8 Contador de dias seguidos no painel usando `computeStreak`
-- [ ] 7.9 Testes de integração do cron: envia só para quem deve, não duplica no mesmo dia, ignora gasto automático, 401 sem segredo
+- [x] 7.1 Card de convite após o primeiro gasto: "Ativar" / "Agora não" (adiamento de 7 dias em `localStorage` com try/catch)
+- [x] 7.2 `Notification.requestPermission()` apenas no clique; no iOS fora do standalone, mostrar instrução de instalação
+- [x] 7.3 Página `/(app)/configuracoes`: ativar/desativar lembrete, horário (18h–23h), estado "permissão negada" com instrução (o link de acesso está na página Perfil, para manter a barra inferior com 4 itens)
+- [x] 7.4 `server/reminders.ts`: `findUsersToRemind(nowUtc)` — lembrete ativo, hora local = `reminderHour`, `lastReminderSentOn` ≠ hoje local, sem registro no dia (a hora local e a data local vêm de `localHour`/`localDate`; `getRegisteredDates` ganhou um parâmetro `now` para a checagem de "já registrou hoje" usar o mesmo instante)
+- [x] 7.5 `app/api/cron/reminders/route.ts`: valida `Bearer CRON_SECRET` (401 se inválido), envia, grava `lastReminderSentOn` (aceita só POST e responde JSON `{ checked, sent, removedSubscriptions }`; `/api/cron` ficou fora do matcher do `proxy.ts`, senão o middleware do Neon Auth responderia 307 para /login e o `curl -f` não detectaria a falha. A lógica está em `runReminderCron` (`server/reminders.ts`))
+- [x] 7.6 Agendador: workflow `.github/workflows/reminders-cron.yml` (GitHub Actions) — `schedule: '7 * * * *'` + `workflow_dispatch`, um step de `curl -fsS --max-time 60 -X POST` em `${{ secrets.APP_URL }}/api/cron/reminders` com `Authorization: Bearer ${{ secrets.CRON_SECRET }}`, `timeout-minutes: 5`
+- [x] 7.7 Botão "Não gastei nada hoje" no painel (some quando o dia já está registrado)
+- [x] 7.8 Contador de dias seguidos no painel usando `computeStreak` (o card do painel mostra o contador; sem sequência, convida a começar uma)
+- [x] 7.9 Testes de integração do cron: envia só para quem deve, não duplica no mesmo dia, ignora gasto automático, 401 sem segredo (o teste de 401 e do formato do JSON é unitário (`app/api/cron/reminders/route.test.ts`, com `runReminderCron` mockado, para não varrer usuários reais da dev); os demais casos exercitam `runReminderCron` no banco real (`server/reminders.test.ts`) com `web-push` mockado)
 
 ## 8. Validação final
 - [ ] 8.1 `pnpm test`, `pnpm test:integration` (branch `dev`), `tsc --noEmit`, `pnpm lint`, `pnpm build`

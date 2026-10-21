@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Perfil · Pave",
@@ -11,6 +12,9 @@ export default function PerfilPage() {
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
         Página placeholder — conteúdo chega em uma próxima mudança.
       </p>
+      <Link href="/configuracoes" className="min-h-11 py-2 text-sm font-medium underline">
+        Configurações e lembrete diário
+      </Link>
     </div>
   );
 }

@@ -13,7 +13,7 @@ import {
   setRecurringActive,
   updateRecurring,
 } from "./recurring";
-import { getRegisteredDates, markNoSpend } from "./checkin";
+import { getRegisteredDates, hasManualExpense, markNoSpend } from "./checkin";
 
 // Integration tests for contas fixas (tasks.md 3.7). Every user is created
 // with a unique id and removed (cascade) in afterAll.
@@ -135,8 +135,17 @@ describe("contas fixas no ciclo (integration)", () => {
     expect([e1.amountCents, e2.amountCents]).toEqual([150000, 160000]);
 
     expect(await deleteRecurring(userId, rec.id)).toBe(true);
+    // Soft delete: o lançamento mantém o vínculo (e o selo "Fixa").
     const kept = await prisma.expense.findFirstOrThrow({ where: { id: e1.id } });
-    expect(kept.recurringExpenseId).toBeNull(); // onDelete: SetNull
+    expect(kept.recurringExpenseId).toBe(rec.id);
+    expect(await listRecurring(userId)).toEqual([]);
+    const row = await prisma.recurringExpense.findUniqueOrThrow({ where: { id: rec.id } });
+    expect(row.deletedAt).not.toBeNull();
+    expect(row.active).toBe(false);
+    // Conta excluída não pode mais ser editada, pausada/reativada nem excluída de novo.
+    expect(await updateRecurring(userId, rec.id, { amountCents: 1 })).toBe(false);
+    expect(await setRecurringActive(userId, rec.id, true)).toBe(false);
+    expect(await deleteRecurring(userId, rec.id)).toBe(false);
     const third = await getOrCreateCycle(userId, "2027-01");
     expect(await prisma.expense.count({ where: { cycleId: third.id } })).toBe(0);
   });
@@ -252,6 +261,44 @@ describe("dias registrados (integration)", () => {
   });
 });
 
+describe("soft delete de conta fixa (integration)", () => {
+  it("excluir não altera getRegisteredDates nem o total de contas fixas do ciclo", async () => {
+    const userId = await newUser();
+    const rec = await createRecurring(userId, {
+      description: "Aluguel", amountCents: 100000, bucket: "needs", dayOfMonth: 10,
+    });
+    const cycle = await getOrCreateCycle(userId, "2027-10");
+    await prisma.expense.create({
+      data: { userId, cycleId: cycle.id, amountCents: 500, description: "manual", bucket: "wants",
+        occurredOn: new Date("2027-10-01T00:00:00.000Z") },
+    });
+    await markNoSpend(userId, isoDate(new Date()));
+
+    const datesBefore = await getRegisteredDates(userId, "America/Sao_Paulo");
+    const totalsBefore = await getRecurringTotalsByBucket(userId, cycle.id);
+    expect(totalsBefore.needs).toBe(100000);
+
+    expect(await deleteRecurring(userId, rec.id)).toBe(true);
+
+    expect(await getRegisteredDates(userId, "America/Sao_Paulo")).toEqual(datesBefore);
+    expect(await getRecurringTotalsByBucket(userId, cycle.id)).toEqual(totalsBefore);
+    expect(await countRecurring(userId)).toBe(0);
+  });
+
+  it("conta excluída (e conta pausada+excluída) não é lançada em ciclos novos", async () => {
+    const userId = await newUser();
+    const rec = await createRecurring(userId, {
+      description: "Internet", amountCents: 9000, bucket: "needs", dayOfMonth: 5,
+    });
+    await deleteRecurring(userId, rec.id);
+    // Mesmo que alguém reative o campo `active` por baixo, deletedAt vale.
+    await prisma.recurringExpense.update({ where: { id: rec.id }, data: { active: true } });
+
+    const cycle = await getOrCreateCycle(userId, "2027-11");
+    expect(await prisma.expense.count({ where: { cycleId: cycle.id } })).toBe(0);
+  });
+});
+
 describe("totais de contas fixas por balde (integration)", () => {
   it("soma só gastos de conta fixa, inclusive agendados, e isola usuários", async () => {
     const userId = await newUser();
@@ -269,5 +316,22 @@ describe("totais de contas fixas por balde (integration)", () => {
     expect(await getRecurringTotalsByBucket(other, cycle.id)).toEqual({ needs: 0, wants: 0, savings: 0 });
     expect(await countRecurring(userId)).toBe(3);
     expect(await countRecurring(other)).toBe(0);
+  });
+});
+
+describe("hasManualExpense (integration)", () => {
+  it("só conta gasto manual: lançamento automático não dispara o convite", async () => {
+    const userId = await newUser();
+    await createRecurring(userId, { description: "Aluguel", amountCents: 100000, bucket: "needs", dayOfMonth: 10 });
+    const cycle = await getOrCreateCycle(userId, "2027-12");
+    expect(await prisma.expense.count({ where: { cycleId: cycle.id } })).toBe(1);
+    expect(await hasManualExpense(userId)).toBe(false);
+
+    await prisma.expense.create({
+      data: { userId, cycleId: cycle.id, amountCents: 500, description: "pão", bucket: "needs",
+        occurredOn: new Date("2027-12-01T00:00:00.000Z") },
+    });
+    expect(await hasManualExpense(userId)).toBe(true);
+    expect(await hasManualExpense(await newUser())).toBe(false);
   });
 });

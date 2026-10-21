@@ -18,7 +18,7 @@ export interface RecurringInput {
 
 export function listRecurring(userId: string) {
   return prisma.recurringExpense.findMany({
-    where: { userId },
+    where: { userId, deletedAt: null },
     orderBy: [{ dayOfMonth: "asc" }, { createdAt: "asc" }],
   });
 }
@@ -65,7 +65,7 @@ export async function updateRecurring(
   data: Partial<RecurringInput>
 ): Promise<boolean> {
   const { count } = await prisma.recurringExpense.updateMany({
-    where: { id, userId },
+    where: { id, userId, deletedAt: null },
     data,
   });
   return count > 0;
@@ -77,20 +77,24 @@ export async function setRecurringActive(
   active: boolean
 ): Promise<boolean> {
   const { count } = await prisma.recurringExpense.updateMany({
-    where: { id, userId },
+    where: { id, userId, deletedAt: null },
     data: { active },
   });
   return count > 0;
 }
 
-/** Already-launched expenses stay (their `recurringExpenseId` is nulled by
- * the FK's ON DELETE SET NULL). */
+/**
+ * Soft delete: the template is hidden and deactivated but kept, so the
+ * expenses it already launched keep their link (and their "Fixa" badge).
+ * Nothing is physically deleted, so the FK's ON DELETE SET NULL never fires.
+ */
 export async function deleteRecurring(
   userId: string,
   id: string
 ): Promise<boolean> {
-  const { count } = await prisma.recurringExpense.deleteMany({
-    where: { id, userId },
+  const { count } = await prisma.recurringExpense.updateMany({
+    where: { id, userId, deletedAt: null },
+    data: { deletedAt: new Date(), active: false },
   });
   return count > 0;
 }
@@ -121,7 +125,9 @@ export async function applyRecurringInTransaction(
 
   const [cycle, templates] = await Promise.all([
     tx.budgetCycle.findFirstOrThrow({ where: { id: cycleId, userId } }),
-    tx.recurringExpense.findMany({ where: { userId, active: true } }),
+    tx.recurringExpense.findMany({
+      where: { userId, active: true, deletedAt: null },
+    }),
   ]);
   if (templates.length === 0) return 0;
 
@@ -150,7 +156,7 @@ export function applyRecurringToCycle(
 }
 
 export function countRecurring(userId: string): Promise<number> {
-  return prisma.recurringExpense.count({ where: { userId } });
+  return prisma.recurringExpense.count({ where: { userId, deletedAt: null } });
 }
 
 /** Per-bucket sum of the cycle's expenses that came from a recurring
