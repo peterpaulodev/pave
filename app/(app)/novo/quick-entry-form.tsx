@@ -6,19 +6,11 @@ import { toast } from "sonner";
 import { parseQuickEntry } from "@/lib/domain/parse-quick-entry";
 import { suggestBucket } from "@/lib/domain/suggest-bucket";
 import type { Bucket } from "@/lib/domain/buckets";
+import { BucketToggle } from "@/components/bucket-toggle";
 import { formatBRL } from "@/lib/money";
 import { createExpense, deleteExpense } from "@/actions/expenses";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-
-const BUCKET_ORDER: Bucket[] = ["needs", "wants", "savings"];
-
-const BUCKET_LABELS: Record<Bucket, string> = {
-  needs: "Necessidades",
-  wants: "Lazer",
-  savings: "Investimentos",
-};
 
 export function QuickEntryForm() {
   const [input, setInput] = useState("");
@@ -94,21 +86,7 @@ export function QuickEntryForm() {
       />
 
       {parsed && (
-        <ToggleGroup
-          value={[bucket]}
-          onValueChange={(values) => {
-            const next = values[0];
-            if (!next) return; // ignore deselect-to-empty
-            setUserPickedBucket(next as Bucket);
-          }}
-          className="w-full"
-        >
-          {BUCKET_ORDER.map((key) => (
-            <ToggleGroupItem key={key} value={key} className="min-h-11 flex-1">
-              {BUCKET_LABELS[key]}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <BucketToggle value={bucket} onChange={setUserPickedBucket} />
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}

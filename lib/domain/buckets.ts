@@ -5,6 +5,14 @@
  */
 export type Bucket = "needs" | "wants" | "savings";
 
+export const BUCKET_ORDER: Bucket[] = ["needs", "wants", "savings"];
+
+export const BUCKET_LABELS: Record<Bucket, string> = {
+  needs: "Necessidades",
+  wants: "Lazer",
+  savings: "Investimentos",
+};
+
 export const BUCKET_RATIOS: Record<Bucket, number> = {
   needs: 0.5,
   wants: 0.3,

@@ -6,7 +6,9 @@ import { getOrCreateCycle, upsertUserSettings } from "./queries";
 import {
   applyRecurringToCycle,
   createRecurring,
+  countRecurring,
   deleteRecurring,
+  getRecurringTotalsByBucket,
   listRecurring,
   setRecurringActive,
   updateRecurring,
@@ -247,5 +249,25 @@ describe("dias registrados (integration)", () => {
     expect(await getRegisteredDates(a, "UTC")).toEqual([]);
     expect(await getRegisteredDates(b, "UTC", 60)).toHaveLength(1);
     expect(await getRegisteredDates(a, "UTC", 60)).toEqual([]);
+  });
+});
+
+describe("totais de contas fixas por balde (integration)", () => {
+  it("soma só gastos de conta fixa, inclusive agendados, e isola usuários", async () => {
+    const userId = await newUser();
+    const other = await newUser();
+    await createRecurring(userId, { description: "Aluguel", amountCents: 150000, bucket: "needs", dayOfMonth: 10 });
+    await createRecurring(userId, { description: "Luz", amountCents: 20000, bucket: "needs", dayOfMonth: 28 });
+    await createRecurring(userId, { description: "Netflix", amountCents: 5000, bucket: "wants", dayOfMonth: 1 });
+    const cycle = await getOrCreateCycle(userId, "2027-09");
+    await prisma.expense.create({
+      data: { userId, cycleId: cycle.id, amountCents: 7000, description: "mercado", bucket: "needs",
+        occurredOn: new Date("2027-09-02T00:00:00.000Z") },
+    });
+
+    expect(await getRecurringTotalsByBucket(userId, cycle.id)).toEqual({ needs: 170000, wants: 5000, savings: 0 });
+    expect(await getRecurringTotalsByBucket(other, cycle.id)).toEqual({ needs: 0, wants: 0, savings: 0 });
+    expect(await countRecurring(userId)).toBe(3);
+    expect(await countRecurring(other)).toBe(0);
   });
 });

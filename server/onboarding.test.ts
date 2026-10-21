@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { completeOnboarding } from "./queries";
+import { completeOnboarding, getOrCreateCycle } from "./queries";
 
 // Hits the real Neon database — run via `pnpm test:integration`. Each test
 // creates and tears down its own user, since completeOnboarding's
@@ -37,6 +37,23 @@ describe("completeOnboarding (integration)", () => {
     expect(cycle.needsLimitCents + cycle.wantsLimitCents + cycle.savingsLimitCents).toBe(
       500000
     );
+  });
+
+  it("carimba recurringAppliedAt no ciclo criado, para contas fixas não entrarem retroativamente", async () => {
+    const userId = await createTestUser();
+    const before = Date.now();
+
+    const { cycle } = await completeOnboarding(userId, 500000);
+
+    expect(cycle.recurringAppliedAt).not.toBeNull();
+    expect(cycle.recurringAppliedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+
+    // Uma conta fixa cadastrada depois não é lançada neste ciclo ao relê-lo.
+    await prisma.recurringExpense.create({
+      data: { userId, description: "Aluguel", amountCents: 100000, bucket: "needs", dayOfMonth: 10 },
+    });
+    await getOrCreateCycle(userId, cycle.period);
+    expect(await prisma.expense.count({ where: { cycleId: cycle.id } })).toBe(0);
   });
 
   it("é idempotente num reenvio sequencial (retry) — não duplica o ciclo nem sobrescreve a renda", async () => {

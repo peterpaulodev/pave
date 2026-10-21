@@ -9,11 +9,14 @@ import {
   listExpenses,
 } from "@/server/queries";
 import { currentPeriod } from "@/lib/domain/period";
+import { localDate } from "@/lib/domain/local-date";
+import { countRecurring, getRecurringTotalsByBucket } from "@/server/recurring";
 import { formatBRL } from "@/lib/money";
-import type { Bucket } from "@/lib/domain/buckets";
+import { BUCKET_LABELS, BUCKET_ORDER } from "@/lib/domain/buckets";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteExpenseButton } from "./delete-expense-button";
+import { RecurringNotice } from "./recurring-notice";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +24,11 @@ export const metadata: Metadata = {
   title: "Painel · Pave",
 };
 
-const BUCKET_ORDER: Bucket[] = ["needs", "wants", "savings"];
-
-const BUCKET_LABELS: Record<Bucket, string> = {
-  needs: "Necessidades",
-  wants: "Lazer",
-  savings: "Investimentos",
-};
+/** "10/04" from a pure `@db.Date` value (UTC midnight, no time zone shift). */
+function formatShortDate(date: Date): string {
+  const [, month, day] = date.toISOString().slice(0, 10).split("-");
+  return `${day}/${month}`;
+}
 
 export default async function PainelPage() {
   // app/(app)/layout.tsx already guarantees onboarding is done before any
@@ -42,10 +43,18 @@ export default async function PainelPage() {
   const cycle = await getOrCreateCycle(userId, period);
   const balances = await getCycleBalances(userId, cycle.id);
   const expenses = await listExpenses(userId, cycle.id);
+  const [recurringTotals, recurringCount] = await Promise.all([
+    getRecurringTotalsByBucket(userId, cycle.id),
+    countRecurring(userId),
+  ]);
+  const today = localDate(timezone);
+  const hasAutomaticExpenses = expenses.some((e) => e.recurringExpenseId);
 
   return (
     <div className="flex flex-col gap-6 pb-20">
       <h1 className="text-xl font-semibold">Seu mês</h1>
+
+      {hasAutomaticExpenses && <RecurringNotice period={period} />}
 
       <div className="flex flex-col gap-3">
         {BUCKET_ORDER.map((bucket) => {
@@ -84,11 +93,34 @@ export default async function PainelPage() {
                   {formatBRL(balance.spentCents)} de{" "}
                   {formatBRL(balance.limitCents)}
                 </p>
+                {recurringTotals[bucket] > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {formatBRL(recurringTotals[bucket])} em contas fixas
+                  </p>
+                )}
               </CardContent>
             </Card>
           );
         })}
       </div>
+
+      {recurringCount === 0 && (
+        <Card size="sm">
+          <CardContent className="flex flex-col gap-2">
+            <p className="text-sm">
+              Tem contas que se repetem todo mês? Cadastre uma vez e elas
+              entram sozinhas.
+            </p>
+            <Button
+              variant="outline"
+              render={<Link href="/contas-fixas" />}
+              className="min-h-11 self-start"
+            >
+              Cadastrar contas fixas
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {expenses.length === 0 ? (
         <Card>
@@ -116,8 +148,18 @@ export default async function PainelPage() {
                   <span className="text-sm font-medium">
                     {expense.description}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                     {BUCKET_LABELS[expense.bucket]}
+                    {expense.recurringExpenseId && (
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[0.7rem] font-medium text-foreground">
+                        Fixa
+                      </span>
+                    )}
+                    {expense.occurredOn.toISOString().slice(0, 10) > today && (
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[0.7rem] font-medium text-foreground">
+                        Agendado · {formatShortDate(expense.occurredOn)}
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center gap-1">

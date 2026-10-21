@@ -22,18 +22,18 @@
 - [x] 3.7 Testes de integração: aplicação única por ciclo, concorrência (dois `getOrCreateCycle` simultâneos), exclusão não recria, pausada não lança, isolamento entre usuários
 
 ## 4. Contas fixas — UI (spec: recurring-expenses)
-- [ ] 4.1 Página `/(app)/contas-fixas`: lista com descrição, valor, balde, dia, ativo/pausado
-- [ ] 4.2 Formulário (sheet) de criar/editar: descrição, valor (`parseBRL`), balde com sugestão via `suggestBucket`, dia 1–31
-- [ ] 4.3 Checkbox "Lançar também neste mês" com default por `isDuePassed`
-- [ ] 4.4 Ações: pausar/reativar, excluir com confirmação ("os lançamentos já feitos continuam no histórico")
-- [ ] 4.5 Server Actions em `actions/recurring.ts` com validação zod; `userId` sempre da sessão
-- [ ] 4.6 Link para contas fixas na navegação do app
+- [x] 4.1 Página `/(app)/contas-fixas`: lista com descrição, valor, balde, dia, ativo/pausado (a página também mostra um estado vazio com texto explicativo)
+- [x] 4.2 Formulário (sheet) de criar/editar: descrição, valor (`parseBRL`), balde com sugestão via `suggestBucket`, dia 1–31 (o sheet é aberto de baixo (mobile-first); o toggle de balde foi extraído para `components/bucket-toggle.tsx` e `BUCKET_LABELS`/`BUCKET_ORDER` para `lib/domain/buckets.ts`, reaproveitados pelo lançamento rápido e pelo painel)
+- [x] 4.3 Checkbox "Lançar também neste mês" com default por `isDuePassed` (o default é calculado no servidor ao renderizar a página (mapa `duePassedByDay` dia 1–31, via `isDuePassed` com a data local do usuário); o cliente só escolhe a entrada pelo dia digitado)
+- [x] 4.4 Ações: pausar/reativar, excluir com confirmação ("os lançamentos já feitos continuam no histórico") (a confirmação de exclusão é um sheet inferior, já que o projeto não tem AlertDialog)
+- [x] 4.5 Server Actions em `actions/recurring.ts` com validação zod; `userId` sempre da sessão (`createRecurringAction` calcula o `cycleId` no servidor com `getOrCreateCycle` e só cria o ciclo quando "Lançar também neste mês" está marcado; nenhum `userId`/`cycleId` vem do cliente)
+- [x] 4.6 Link para contas fixas na navegação do app (o item se chama "Fixas" na barra inferior)
 
 ## 5. Painel (spec: budget-dashboard)
-- [ ] 5.1 Selos "Fixa" e "Agendado" (com data) na lista de gastos
-- [ ] 5.2 Linha "R$ X em contas fixas" em cada card de balde quando houver
-- [ ] 5.3 Convite para cadastrar contas fixas quando o usuário não tiver nenhuma
-- [ ] 5.4 Texto explicativo na primeira vez que gastos automáticos aparecerem no mês
+- [x] 5.1 Selos "Fixa" e "Agendado" (com data) na lista de gastos
+- [x] 5.2 Linha "R$ X em contas fixas" em cada card de balde quando houver (soma os gastos do ciclo com `recurringExpenseId`, inclusive os agendados)
+- [x] 5.3 Convite para cadastrar contas fixas quando o usuário não tiver nenhuma
+- [x] 5.4 Texto explicativo na primeira vez que gastos automáticos aparecerem no mês (o aviso fica visível até o usuário tocar em "Entendi" e então some pelo resto do mês (chave `pave:recurring-notice:<período>` no localStorage, com try/catch))
 
 ## 6. Web Push — infraestrutura
 - [ ] 6.1 Instalar `web-push` (+ `@types/web-push`); adicionar envs `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET` ao `lib/env.ts` e `.env.example`

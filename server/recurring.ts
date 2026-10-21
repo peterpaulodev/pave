@@ -148,3 +148,27 @@ export function applyRecurringToCycle(
     applyRecurringInTransaction(tx, userId, cycleId)
   );
 }
+
+export function countRecurring(userId: string): Promise<number> {
+  return prisma.recurringExpense.count({ where: { userId } });
+}
+
+/** Per-bucket sum of the cycle's expenses that came from a recurring
+ * expense — scheduled (future-dated) ones included, since the money is
+ * already committed (design.md D4). */
+export async function getRecurringTotalsByBucket(
+  userId: string,
+  cycleId: string
+): Promise<Record<Bucket, number>> {
+  const grouped = await prisma.expense.groupBy({
+    by: ["bucket"],
+    where: { cycleId, userId, recurringExpenseId: { not: null } },
+    _sum: { amountCents: true },
+  });
+
+  const totals: Record<Bucket, number> = { needs: 0, wants: 0, savings: 0 };
+  for (const row of grouped) {
+    totals[row.bucket] = row._sum.amountCents ?? 0;
+  }
+  return totals;
+}

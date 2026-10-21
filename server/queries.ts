@@ -174,6 +174,10 @@ export async function completeOnboarding(
           needsLimitCents: needs,
           wantsLimitCents: wants,
           savingsLimitCents: savings,
+          // No recurring expenses exist yet for a user being onboarded;
+          // stamping the cycle keeps any created later from being launched
+          // retroactively into it (design.md D2).
+          recurringAppliedAt: onboardedAt,
         },
         update: {},
       }),

@@ -27,6 +27,21 @@ const items: NavItem[] = [
     ),
   },
   {
+    href: "/contas-fixas",
+    label: "Fixas",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-6 w-6">
+        <path
+          d="M5 12a7 7 0 0 1 12-4.9L19 9M19 12a7 7 0 0 1-12 4.9L5 15M19 5v4h-4M5 19v-4h4"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+  },
+  {
     href: "/explorar",
     label: "Explorar",
     icon: (
