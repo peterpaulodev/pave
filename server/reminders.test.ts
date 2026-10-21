@@ -29,6 +29,7 @@ interface Fixture {
   reminderEnabled?: boolean;
   reminderHour?: number;
   devices?: number;
+  showAmount?: boolean;
 }
 
 async function newUser(fixture: Fixture = {}) {
@@ -40,6 +41,7 @@ async function newUser(fixture: Fixture = {}) {
     timezone: fixture.timezone ?? SP,
     reminderEnabled: fixture.reminderEnabled ?? true,
     reminderHour: fixture.reminderHour ?? 20,
+    reminderShowAmount: fixture.showAmount ?? false,
   });
   const endpoints: string[] = [];
   for (let i = 0; i < (fixture.devices ?? 1); i += 1) {
@@ -159,5 +161,97 @@ describe("cron de lembretes (integration)", () => {
     expect(result).toEqual({ checked: 1, sent: 1, removedSubscriptions: 1 });
     const left = await prisma.pushSubscription.findMany({ where: { userId: user.id } });
     expect(left.map((s) => s.endpoint).sort()).toEqual([ok, flaky].sort());
+  });
+});
+
+// 2027-03-10 has 22 days left (10 → 31); a R$ 220,00 Lazer limit gives R$ 10,00 a day.
+describe("texto com o valor diário (integration)", () => {
+  const DEFAULT_BODY = "Gastou algo hoje? Leva 5 segundos para registrar.";
+
+  async function withCycle(
+    userId: string,
+    expenses: { amountCents: number; occurredOn: string; bucket?: "wants" | "needs" }[] = [],
+    wantsLimitCents = 22000
+  ) {
+    const cycle = await prisma.budgetCycle.create({
+      data: {
+        userId, period: "2027-03", incomeCents: 100000,
+        needsLimitCents: 50000, wantsLimitCents, savingsLimitCents: 20000,
+      },
+    });
+    for (const e of expenses) {
+      await prisma.expense.create({
+        data: {
+          userId, cycleId: cycle.id, amountCents: e.amountCents, description: "x",
+          bucket: e.bucket ?? "wants", occurredOn: new Date(`${e.occurredOn}T00:00:00.000Z`),
+        },
+      });
+    }
+  }
+
+  async function bodyAfterCron(userId: string) {
+    const cyclesBefore = await prisma.budgetCycle.count();
+    const result = await runReminderCron(NOW, { onlyUserIds: [userId] });
+    expect(result.sent).toBe(1);
+    // the cron never creates a cycle
+    expect(await prisma.budgetCycle.count()).toBe(cyclesBefore);
+    return (JSON.parse(sendNotification.mock.calls[0][1] as string) as { body: string }).body;
+  }
+
+  it("opção desativada: texto padrão, mesmo com saldo", async () => {
+    const user = await newUser({ showAmount: false });
+    await withCycle(user.id);
+    expect(await bodyAfterCron(user.id)).toBe(DEFAULT_BODY);
+  });
+
+  it("opção ativada com saldo para hoje: mostra o que resta", async () => {
+    const user = await newUser({ showAmount: true });
+    await withCycle(user.id, [{ amountCents: 300, occurredOn: "2027-03-10" }]);
+    const body = await bodyAfterCron(user.id);
+    expect(body.replace(/\s/g, " ")).toBe("Você ainda tem R$ 7,00 de lazer hoje. Gastou algo?");
+  });
+
+  it("opção ativada, sem gasto hoje: mostra o valor inteiro do dia", async () => {
+    const user = await newUser({ showAmount: true });
+    await withCycle(user.id);
+    expect((await bodyAfterCron(user.id)).replace(/\s/g, " ")).toBe(
+      "Você ainda tem R$ 10,00 de lazer hoje. Gastou algo?"
+    );
+  });
+
+  it("gastos de outros baldes não reduzem o valor", async () => {
+    const user = await newUser({ showAmount: true });
+    await withCycle(user.id, [{ amountCents: 9000, occurredOn: "2027-03-10", bucket: "needs" }]);
+    expect((await bodyAfterCron(user.id)).replace(/\s/g, " ")).toContain("R$ 10,00");
+  });
+
+  it("opção ativada e passou do valor de hoje: texto padrão", async () => {
+    const user = await newUser({ showAmount: true });
+    await withCycle(user.id, [{ amountCents: 1500, occurredOn: "2027-03-10" }]);
+    expect(await bodyAfterCron(user.id)).toBe(DEFAULT_BODY);
+  });
+
+  it("opção ativada e lazer do mês esgotado: texto padrão", async () => {
+    const user = await newUser({ showAmount: true });
+    await withCycle(user.id, [{ amountCents: 22000, occurredOn: "2027-03-02" }]);
+    expect(await bodyAfterCron(user.id)).toBe(DEFAULT_BODY);
+  });
+
+  it("opção ativada sem ciclo no período: texto padrão e nenhum ciclo é criado", async () => {
+    const user = await newUser({ showAmount: true });
+    expect(await prisma.budgetCycle.count({ where: { userId: user.id } })).toBe(0);
+    expect(await bodyAfterCron(user.id)).toBe(DEFAULT_BODY);
+    expect(await prisma.budgetCycle.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it("ciclo só de outro mês conta como sem ciclo", async () => {
+    const user = await newUser({ showAmount: true });
+    await prisma.budgetCycle.create({
+      data: {
+        userId: user.id, period: "2027-02", incomeCents: 1,
+        needsLimitCents: 1, wantsLimitCents: 99999, savingsLimitCents: 1,
+      },
+    });
+    expect(await bodyAfterCron(user.id)).toBe(DEFAULT_BODY);
   });
 });

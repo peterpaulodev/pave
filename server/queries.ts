@@ -59,6 +59,7 @@ export interface UpsertUserSettingsInput {
   onboardedAt?: Date;
   reminderEnabled?: boolean;
   reminderHour?: number;
+  reminderShowAmount?: boolean;
   lastReminderSentOn?: Date | null;
 }
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getSessionUserOrRedirect } from "@/lib/auth/session";
 import { getUserSettings } from "@/server/queries";
 import { ReminderSettings } from "./reminder-settings";
+import { ShowAmountSetting } from "./show-amount-setting";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function ConfiguracoesPage() {
         enabled={settings?.reminderEnabled ?? false}
         hour={settings?.reminderHour ?? 20}
       />
+      <ShowAmountSetting initial={settings?.reminderShowAmount ?? false} />
     </div>
   );
 }

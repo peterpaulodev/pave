@@ -14,17 +14,17 @@
 - [x] 3.2 Testes de integração: manual de hoje vai para `spentTodayCents`; manual de ontem e retroativo vão para `committedCents`; conta fixa de Lazer agendada vai para `committedCents`; gastos de outros baldes e de outro usuário ignorados _(cobre também: manual com data futura, conta fixa que vence hoje, outro ciclo do mesmo usuário, ciclo de outro usuário (`null`), soft delete da conta fixa sem alterar valores; mutação `occurred_on = today` → `<= today` em `spentToday` derruba 2 testes (revertida))_
 
 ## 4. Painel (spec: budget-dashboard)
-- [ ] 4.1 Card do valor diário acima dos baldes, com valor, "Já gastou · resta"
-- [ ] 4.2 Estados `over_today` e `bucket_exhausted` com os textos do design (D4)
-- [ ] 4.3 Texto especial no último dia do mês
-- [ ] 4.4 Explicação ao toque (popover ou sheet) com o número de dias restantes
-- [ ] 4.5 Validar em 390px com o bypass de dev: estado normal, excedido hoje, esgotado
+- [x] 4.1 Card do valor diário acima dos baldes, com valor, "Já gastou · resta" _(`DailyAllowanceCard` acima do streak e dos baldes; `today` = `localDate(timezone)` no servidor; sem ciclo/inputs, o card não aparece)_
+- [x] 4.2 Estados `over_today` e `bucket_exhausted` com os textos do design (D4) _(só o `bucket_exhausted` usa o estilo destrutivo; `over_today` é texto neutro)_
+- [x] 4.3 Texto especial no último dia do mês _(o texto especial vale para o estado `ok`; `over_today` no último dia mantém a mensagem de excesso)_
+- [x] 4.4 Explicação ao toque (popover ou sheet) com o número de dias restantes _(reaproveita o `Sheet` (bottom) já usado em contas fixas — não havia popover no projeto; com 1 dia restante o texto muda para "Hoje é o último dia do mês…" e a explicação acrescenta que é um teto, não uma meta (Riscos do design))_
+- [x] 4.5 Validar em 390px com o bypass de dev: estado normal, excedido hoje, esgotado _(estados ok, excedido e esgotado validados no painel real com dados de teste (sem overflow horizontal); o último dia do mês não é alcançável sem mexer no relógio, então foi validado numa rota temporária (já removida) renderizando o card com `today = 2026-10-31`; salvar em `/novo` atualiza o "resta hoje" sem reload manual (painel `force-dynamic`, `staleTimes.dynamic` = 0, sem precisar de `revalidatePath`))_
 
 ## 5. Lembrete (spec: daily-reminder)
-- [ ] 5.1 Toggle "Mostrar quanto sobra de lazer no lembrete" em `/configuracoes` (Server Action; `userId` da sessão)
-- [ ] 5.2 Cron: para usuários com `reminderShowAmount`, buscar ciclo existente do período (sem criar), calcular o valor diário e montar o texto com `buildReminderBody`
-- [ ] 5.3 Testes de integração do cron: texto padrão com opção desativada, texto com valor quando `ok`, texto padrão sem ciclo e quando excedido, e cron não cria ciclo
+- [x] 5.1 Toggle "Mostrar quanto sobra de lazer no lembrete" em `/configuracoes` (Server Action; `userId` da sessão) _(`setReminderShowAmount` em `actions/push.ts`, só `userId` da sessão; sem evento de analytics; texto de privacidade sobre a tela de bloqueio)_
+- [x] 5.2 Cron: para usuários com `reminderShowAmount`, buscar ciclo existente do período (sem criar), calcular o valor diário e montar o texto com `buildReminderBody` _(`payloadFor` em `server/reminders.ts`: `findUnique` do ciclo do período local, nunca `getOrCreateCycle`; qualquer erro cai no texto padrão para não perder o lembrete)_
+- [x] 5.3 Testes de integração do cron: texto padrão com opção desativada, texto com valor quando `ok`, texto padrão sem ciclo e quando excedido, e cron não cria ciclo _(asserção explícita de que a contagem de `budget_cycles` não muda após o cron; cobre também ciclo só de outro mês e gasto de outro balde)_
 
 ## 6. Validação final
-- [ ] 6.1 `pnpm test`, `pnpm test:integration` (branch `dev`), `tsc --noEmit`, `pnpm lint`, `pnpm build`
-- [ ] 6.2 `openspec validate add-daily-allowance --strict`
+- [x] 6.1 `pnpm test`, `pnpm test:integration` (branch `dev`), `tsc --noEmit`, `pnpm lint`, `pnpm build`
+- [x] 6.2 `openspec validate add-daily-allowance --strict`

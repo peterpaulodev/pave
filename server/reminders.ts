@@ -4,10 +4,13 @@ import { localDate, localHour } from "@/lib/domain/local-date";
 import { getRegisteredDates } from "@/server/checkin";
 import { sendToUser, type PushPayload } from "@/lib/push/web-push";
 import { trackEvents } from "@/server/analytics";
+import { computeDailyAllowance } from "@/lib/domain/daily-allowance";
+import { buildReminderBody, DEFAULT_REMINDER_BODY } from "@/lib/domain/reminder-text";
+import { getDailyAllowanceInputs } from "@/server/daily-allowance";
 
 export const REMINDER_PAYLOAD: PushPayload = {
   title: "Pave",
-  body: "Gastou algo hoje? Leva 5 segundos para registrar.",
+  body: DEFAULT_REMINDER_BODY,
   // src=notification lets /novo tag the expense as coming from the reminder.
   url: "/novo?src=notification",
 };
@@ -15,6 +18,8 @@ export const REMINDER_PAYLOAD: PushPayload = {
 export interface ReminderCandidate {
   userId: string;
   localDate: string;
+  /** The user opted in to the leftover leisure amount in the text. */
+  showAmount: boolean;
 }
 
 export interface FindUsersToRemindResult {
@@ -52,7 +57,11 @@ export async function findUsersToRemind(
     const registered = await getRegisteredDates(user.userId, user.timezone, 1, nowUtc);
     if (registered.includes(today)) continue;
 
-    due.push({ userId: user.userId, localDate: today });
+    due.push({
+      userId: user.userId,
+      localDate: today,
+      showAmount: user.reminderShowAmount,
+    });
   }
 
   return { checked: settings.length, due };
@@ -72,6 +81,39 @@ async function claimReminder(candidate: ReminderCandidate): Promise<boolean> {
   return count > 0;
 }
 
+/**
+ * The push payload for one user (design.md D5). Only for users who opted in:
+ * looks up the period's *existing* cycle (never creates one — the cron must
+ * not have side effects on the budget) and builds the text from today's
+ * leisure allowance. Anything that goes wrong falls back to the default text
+ * so a reminder is never lost over the amount.
+ */
+async function payloadFor(candidate: ReminderCandidate): Promise<PushPayload> {
+  if (!candidate.showAmount) return REMINDER_PAYLOAD;
+
+  try {
+    const cycle = await prisma.budgetCycle.findUnique({
+      where: {
+        userId_period: {
+          userId: candidate.userId,
+          period: candidate.localDate.slice(0, 7),
+        },
+      },
+      select: { id: true },
+    });
+    const inputs = cycle
+      ? await getDailyAllowanceInputs(candidate.userId, cycle.id, candidate.localDate)
+      : null;
+    const allowance = inputs
+      ? computeDailyAllowance({ ...inputs, today: candidate.localDate })
+      : null;
+    return { ...REMINDER_PAYLOAD, body: buildReminderBody(allowance, true) };
+  } catch (error) {
+    console.error("[reminders] falha ao montar o texto com o valor diário", error);
+    return REMINDER_PAYLOAD;
+  }
+}
+
 export interface ReminderRunResult {
   checked: number;
   sent: number;
@@ -87,7 +129,7 @@ export async function runReminderCron(
   const outcomes = await Promise.allSettled(
     due.map(async (candidate) => {
       if (!(await claimReminder(candidate))) return null;
-      return sendToUser(candidate.userId, REMINDER_PAYLOAD);
+      return sendToUser(candidate.userId, await payloadFor(candidate));
     })
   );
 

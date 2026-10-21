@@ -73,3 +73,15 @@ export async function setReminderSettings(
   }
   return { ok: true };
 }
+
+/** "Mostrar quanto sobra de lazer no lembrete" — off by default, since the
+ * notification shows on the lock screen. Not tracked as an analytics event. */
+export async function setReminderShowAmount(
+  show: boolean
+): Promise<PushActionResult> {
+  if (typeof show !== "boolean") return { error: "Valor inválido" };
+
+  const { id: userId } = await getSessionUserOrRedirect();
+  await upsertUserSettings(userId, { reminderShowAmount: show });
+  return { ok: true };
+}

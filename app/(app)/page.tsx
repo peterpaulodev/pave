@@ -12,11 +12,14 @@ import { currentPeriod } from "@/lib/domain/period";
 import { localDate } from "@/lib/domain/local-date";
 import { computeStreak } from "@/lib/domain/streak";
 import { getRegisteredDates, hasManualExpense } from "@/server/checkin";
+import { getDailyAllowanceInputs } from "@/server/daily-allowance";
+import { computeDailyAllowance } from "@/lib/domain/daily-allowance";
 import { countRecurring, getRecurringTotalsByBucket } from "@/server/recurring";
 import { formatBRL } from "@/lib/money";
 import { BUCKET_LABELS, BUCKET_ORDER } from "@/lib/domain/buckets";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DailyAllowanceCard } from "./daily-allowance-card";
 import { DeleteExpenseButton } from "./delete-expense-button";
 import { RecurringNotice } from "./recurring-notice";
 import { NoSpendButton } from "./no-spend-button";
@@ -52,10 +55,14 @@ export default async function PainelPage() {
     countRecurring(userId),
   ]);
   const today = localDate(timezone);
-  const [registeredDates, hasSavedExpense] = await Promise.all([
+  const [registeredDates, hasSavedExpense, allowanceInputs] = await Promise.all([
     getRegisteredDates(userId, timezone),
     hasManualExpense(userId),
+    getDailyAllowanceInputs(userId, cycle.id, today),
   ]);
+  const allowance = allowanceInputs
+    ? computeDailyAllowance({ ...allowanceInputs, today })
+    : null;
   const registeredToday = registeredDates.includes(today);
   const streak = computeStreak(registeredDates, today);
   const hasAutomaticExpenses = expenses.some((e) => e.recurringExpenseId);
@@ -63,6 +70,8 @@ export default async function PainelPage() {
   return (
     <div className="flex flex-col gap-6 pb-20">
       <h1 className="text-xl font-semibold">Seu mês</h1>
+
+      {allowance && <DailyAllowanceCard allowance={allowance} />}
 
       <Card size="sm">
         <CardContent className="flex flex-col gap-2">
