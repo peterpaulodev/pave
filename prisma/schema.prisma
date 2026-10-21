@@ -30,6 +30,9 @@ model UserSettings {
   reminderEnabled    Boolean   @default(false) @map("reminder_enabled")
   reminderHour       Int       @default(20) @map("reminder_hour") // 0..23 (CHECK na migration)
   lastReminderSentOn DateTime? @map("last_reminder_sent_on") @db.Date
+  // Show the leftover leisure amount in the reminder text (off by default: the
+  // notification is visible on the lock screen).
+  reminderShowAmount Boolean   @default(false) @map("reminder_show_amount")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

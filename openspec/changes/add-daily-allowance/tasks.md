@@ -1,17 +1,17 @@
 ## 1. Banco de dados
-- [ ] 1.1 Adicionar `reminderShowAmount Boolean @default(false) @map("reminder_show_amount")` em `UserSettings`
-- [ ] 1.2 Gerar migration `reminder_show_amount` com `--create-only`, mostrar o SQL e aplicar na `dev` após confirmação; conferir `prisma migrate diff` vazio
+- [x] 1.1 Adicionar `reminderShowAmount Boolean @default(false) @map("reminder_show_amount")` em `UserSettings`
+- [x] 1.2 Gerar migration `reminder_show_amount` com `--create-only`, mostrar o SQL e aplicar na `dev` após confirmação; conferir `prisma migrate diff` vazio _(migration `20261021184927_reminder_show_amount`, aplicada na `dev` com `migrate deploy`; `migrate diff` sem diferenças)_
 
 ## 2. Domínio (TS puro, com testes)
-- [ ] 2.1 `lib/domain/daily-allowance.ts`: `daysLeftInMonth(today)` e `computeDailyAllowance(input)` conforme D1/D2
-- [ ] 2.2 Testes de `daysLeftInMonth`: dia 1, meio do mês, último dia (30, 31, fevereiro comum e bissexto)
-- [ ] 2.3 Testes de `computeDailyAllowance`: exemplo da spec (R$ 450,00 ÷ 11 = 4090), arredondamento para baixo, gasto de hoje não altera `allowanceCents`, `over_today`, `bucket_exhausted` com saldo zero e negativo, último dia
-- [ ] 2.4 `lib/domain/reminder-text.ts`: `buildReminderBody(allowance | null, showAmount)`
-- [ ] 2.5 Testes de `buildReminderBody`: opção desativada, `ok`, `over_today`, `bucket_exhausted`, sem ciclo (`null`); valor formatado com `formatBRL`
+- [x] 2.1 `lib/domain/daily-allowance.ts`: `daysLeftInMonth(today)` e `computeDailyAllowance(input)` conforme D1/D2 _(o último dia do mês vem de `resolveDueDate(período, 31)`, sem duplicar a lógica; `today` fora do formato ou inexistente (ex.: 2027-02-29) lança erro)_
+- [x] 2.2 Testes de `daysLeftInMonth`: dia 1, meio do mês, último dia (30, 31, fevereiro comum e bissexto)
+- [x] 2.3 Testes de `computeDailyAllowance`: exemplo da spec (R$ 450,00 ÷ 11 = 4090), arredondamento para baixo, gasto de hoje não altera `allowanceCents`, `over_today`, `bucket_exhausted` com saldo zero e negativo, último dia
+- [x] 2.4 `lib/domain/reminder-text.ts`: `buildReminderBody(allowance | null, showAmount)` _(desvio: com a opção ativa e status `ok`, mas `remainingTodayCents <= 0` (gastou exatamente o valor do dia, ou o valor do dia é R$ 0,00), usa o texto padrão em vez de "Você ainda tem R$ 0,00"; a D5 não cobre esse caso)_
+- [x] 2.5 Testes de `buildReminderBody`: opção desativada, `ok`, `over_today`, `bucket_exhausted`, sem ciclo (`null`); valor formatado com `formatBRL` _(o `formatBRL` usa espaço não separável; o teste compara com `formatBRL(...)` e também com o texto literal da spec normalizando espaços)_
 
 ## 3. Dados
-- [ ] 3.1 `server/daily-allowance.ts`: `getDailyAllowanceInputs(userId, cycleId, today)` em uma query com `SUM ... FILTER`, escopada por `userId`
-- [ ] 3.2 Testes de integração: manual de hoje vai para `spentTodayCents`; manual de ontem e retroativo vão para `committedCents`; conta fixa de Lazer agendada vai para `committedCents`; gastos de outros baldes e de outro usuário ignorados
+- [x] 3.1 `server/daily-allowance.ts`: `getDailyAllowanceInputs(userId, cycleId, today)` em uma query com `SUM ... FILTER`, escopada por `userId` _(retorna também `wantsLimitCents` (join com `budget_cycles`) e `null` quando o ciclo não existe ou não é do usuário; "gasto manual" = `recurring_expense_id IS NULL`, e conta fixa que vence hoje fica em `committedCents`)_
+- [x] 3.2 Testes de integração: manual de hoje vai para `spentTodayCents`; manual de ontem e retroativo vão para `committedCents`; conta fixa de Lazer agendada vai para `committedCents`; gastos de outros baldes e de outro usuário ignorados _(cobre também: manual com data futura, conta fixa que vence hoje, outro ciclo do mesmo usuário, ciclo de outro usuário (`null`), soft delete da conta fixa sem alterar valores; mutação `occurred_on = today` → `<= today` em `spentToday` derruba 2 testes (revertida))_
 
 ## 4. Painel (spec: budget-dashboard)
 - [ ] 4.1 Card do valor diário acima dos baldes, com valor, "Já gastou · resta"
