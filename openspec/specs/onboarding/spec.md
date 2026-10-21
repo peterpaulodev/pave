@@ -1,7 +1,8 @@
 # onboarding Specification
 
 ## Purpose
-TBD - created by archiving change add-mvp-503020. Update Purpose after archive.
+
+Primeiro uso do app: coleta a renda mensal, mostra a divisão 50/30/20 resultante, cria o primeiro ciclo e condiciona o acesso às demais telas à conclusão desse passo, incentivando a instalação do PWA sem bloquear o fluxo.
 
 ## Requirements
 

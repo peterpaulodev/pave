@@ -1,7 +1,8 @@
 # daily-reminder Specification
 
 ## Purpose
-TBD - created by archiving change add-daily-allowance. Update Purpose after archive.
+
+Lembrete diário por notificação push: define o texto enviado ao usuário e a opção, desativada por padrão, de mostrar nele quanto ainda resta de lazer para hoje, sem expor valores financeiros na tela de bloqueio sem que o usuário peça.
 
 ## Requirements
 

@@ -1,7 +1,8 @@
 # usage-analytics Specification
 
 ## Purpose
-TBD - created by archiving change add-usage-analytics. Update Purpose after archive.
+
+Métricas de uso do produto: registra eventos de uso no próprio banco, sem atrasar nem quebrar a ação do usuário e sem guardar descrição, valor ou texto livre, e os exibe num painel restrito aos administradores para mostrar onde está o atrito (onboarding, retenção, notificação e acerto da sugestão de balde).
 
 ## Requirements
 

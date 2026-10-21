@@ -1,7 +1,8 @@
 # expense-entry Specification
 
 ## Purpose
-TBD - created by archiving change add-mvp-503020. Update Purpose after archive.
+
+Registro rápido de gastos: permite lançar um gasto em poucos segundos digitando valor e descrição, com sugestão automática do balde, para manter o hábito de registrar sem atrito.
 
 ## Requirements
 

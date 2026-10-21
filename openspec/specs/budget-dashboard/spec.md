@@ -1,7 +1,8 @@
 # budget-dashboard Specification
 
 ## Purpose
-TBD - created by archiving change add-mvp-503020. Update Purpose after archive.
+
+Painel do mês: mostra quanto resta em cada balde do 50/30/20 (Necessidades, Lazer e Investimentos), com as contas fixas já descontadas, e transforma o saldo de Lazer em um valor diário, com o quanto já foi gasto hoje e o quanto ainda resta, para responder "posso gastar isso hoje?".
 
 ## Requirements
 
