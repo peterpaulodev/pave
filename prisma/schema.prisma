@@ -129,6 +129,27 @@ model DailyCheckin {
 }
 
 // ─────────────────────────────────────────────
+// Métricas de uso (openspec/changes/add-usage-analytics)
+// ─────────────────────────────────────────────
+
+// Evento de produto. `props` NUNCA carrega descrição, valor, renda nem texto
+// livre do usuário (design.md D4); os nomes e props válidos vivem no EventMap
+// em lib/analytics/events.ts.
+model Event {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id")
+  name      String
+  props     Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([name, createdAt])
+  @@index([userId, createdAt])
+  @@map("events")
+}
+
+// ─────────────────────────────────────────────
 // Espelho local do usuário do Neon Auth.
 //
 // O Neon Auth (@neondatabase/auth, "auth only") é hospedado e não grava
@@ -156,6 +177,7 @@ model User {
   recurringExpenses RecurringExpense[]
   pushSubscriptions PushSubscription[]
   dailyCheckins     DailyCheckin[]
+  events            Event[]
 
   @@map("user")
 }

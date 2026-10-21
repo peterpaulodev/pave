@@ -1,0 +1,39 @@
+import type { Bucket } from "@/lib/domain/buckets";
+
+/**
+ * Every product event and the exact shape of its `props` (design.md D1).
+ * `props` MUST NOT carry descriptions, amounts, income or any free text the
+ * user typed (D4) — only enums, booleans and small numbers.
+ */
+export type EventMap = {
+  onboarding_completed: Record<string, never>;
+  expense_created: {
+    source: "quick_entry" | "notification" | "recurring";
+    bucket: Bucket;
+    suggestedBucket: Bucket | null;
+    overridden: boolean; // the user changed the suggested bucket
+  };
+  expense_deleted: { wasRecurring: boolean };
+  recurring_created: { bucket: Bucket; alsoThisMonth: boolean };
+  reminder_enabled: { hour: number };
+  reminder_disabled: Record<string, never>;
+  reminder_sent: Record<string, never>;
+  no_spend_checkin: { via: "app" | "notification" };
+};
+
+export type EventName = keyof EventMap;
+
+// `satisfies` makes this list exhaustive: adding an event to EventMap without
+// listing it here is a type error.
+const EVENT_NAME_SET = {
+  onboarding_completed: true,
+  expense_created: true,
+  expense_deleted: true,
+  recurring_created: true,
+  reminder_enabled: true,
+  reminder_disabled: true,
+  reminder_sent: true,
+  no_spend_checkin: true,
+} satisfies Record<EventName, true>;
+
+export const EVENT_NAMES = Object.keys(EVENT_NAME_SET) as EventName[];
