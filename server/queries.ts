@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { splitIncome, type Bucket } from "@/lib/domain/buckets";
 import { currentPeriod } from "@/lib/domain/period";
+import { applyRecurringInTransaction } from "./recurring";
 
 // Every function here takes `userId` explicitly — it always comes from the
 // caller's session (via getSessionUserOrRedirect()), never from client
@@ -72,28 +73,39 @@ export function upsertUserSettings(
 /**
  * Returns the budget cycle for (userId, period), creating it — seeded from
  * the user's last known income (`defaultIncomeCents`) — if it doesn't
- * exist yet. `upsert` can still lose a race between two concurrent
- * requests for the same brand-new cycle (P2002); when that happens, the
- * other request already created the row, so read it back instead of
- * failing.
+ * exist yet. Reads never touch recurring expenses: they are launched only
+ * when the cycle is created, in the same transaction as the cycle itself
+ * (design.md D2), so a crash can't leave a cycle without its launch.
+ *
+ * Two concurrent requests for the same brand-new cycle both try to create
+ * it; the loser blocks on the unique (userId, period), then gets P2002 once
+ * the winner commits. The winner already launched the recurring expenses,
+ * so the loser just reads the cycle back.
  */
 export async function getOrCreateCycle(userId: string, period: string) {
+  const existing = await prisma.budgetCycle.findUnique({
+    where: { userId_period: { userId, period } },
+  });
+  if (existing) return existing;
+
   const settings = await getUserSettings(userId);
   const incomeCents = settings?.defaultIncomeCents ?? 0;
   const { needs, wants, savings } = splitIncome(incomeCents);
 
   try {
-    return await prisma.budgetCycle.upsert({
-      where: { userId_period: { userId, period } },
-      create: {
-        userId,
-        period,
-        incomeCents,
-        needsLimitCents: needs,
-        wantsLimitCents: wants,
-        savingsLimitCents: savings,
-      },
-      update: {}, // cycle already exists — leave it untouched
+    return await prisma.$transaction(async (tx) => {
+      const created = await tx.budgetCycle.create({
+        data: {
+          userId,
+          period,
+          incomeCents,
+          needsLimitCents: needs,
+          wantsLimitCents: wants,
+          savingsLimitCents: savings,
+        },
+      });
+      await applyRecurringInTransaction(tx, userId, created.id);
+      return tx.budgetCycle.findUniqueOrThrow({ where: { id: created.id } });
     });
   } catch (error) {
     if (

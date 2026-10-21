@@ -1,25 +1,25 @@
 ## 1. Banco de dados
-- [ ] 1.1 Adicionar ao `prisma/schema.prisma`: models `RecurringExpense`, `PushSubscription`, `DailyCheckin`; campos novos em `Expense` (`recurringExpenseId` + unique `(recurringExpenseId, cycleId)`), `BudgetCycle` (`recurringAppliedAt`) e `UserSettings` (`reminderEnabled`, `reminderHour`, `lastReminderSentOn`), conforme design.md
-- [ ] 1.2 Gerar migration com `prisma migrate dev --create-only --name recurring_and_reminders`
-- [ ] 1.3 Adicionar no SQL: CHECKs (`amount_cents > 0`, `day_of_month BETWEEN 1 AND 31`, `reminder_hour BETWEEN 0 AND 23`) e `UPDATE budget_cycles SET recurring_applied_at = now() WHERE recurring_applied_at IS NULL`
-- [ ] 1.4 Mostrar o SQL para revisão e só aplicar na branch `dev` após confirmação
+- [x] 1.1 Adicionar ao `prisma/schema.prisma`: models `RecurringExpense`, `PushSubscription`, `DailyCheckin`; campos novos em `Expense` (`recurringExpenseId` + unique `(recurringExpenseId, cycleId)`), `BudgetCycle` (`recurringAppliedAt`) e `UserSettings` (`reminderEnabled`, `reminderHour`, `lastReminderSentOn`), conforme design.md
+- [x] 1.2 Gerar migration com `prisma migrate dev --create-only --name recurring_and_reminders` (`migrate dev` recusa rodar sem TTY; o SQL veio de `prisma migrate diff --from-config-datasource --to-schema` e a pasta foi criada à mão, equivalente ao `--create-only`)
+- [x] 1.3 Adicionar no SQL: CHECKs (`amount_cents > 0`, `day_of_month BETWEEN 1 AND 31`, `reminder_hour BETWEEN 0 AND 23`) e `UPDATE budget_cycles SET recurring_applied_at = now() WHERE recurring_applied_at IS NULL`
+- [x] 1.4 Mostrar o SQL para revisão e só aplicar na branch `dev` após confirmação
 
 ## 2. Domínio (TS puro, com testes)
-- [ ] 2.1 `lib/domain/local-date.ts`: `localDate(tz, now?)` → `YYYY-MM-DD` e `localHour(tz, now?)` → 0–23
-- [ ] 2.2 Testes de `local-date`: virada de dia em `America/Sao_Paulo` vs UTC (ex.: 23:30 UTC-3 = 02:30 UTC do dia seguinte)
-- [ ] 2.3 `lib/domain/recurring.ts`: `resolveDueDate(period, dayOfMonth)` e `isDuePassed(dueDate, today)`
-- [ ] 2.4 Testes de `recurring`: dia 31 em abril → 30; dia 30/31 em fevereiro comum e bissexto; dia 1; vencimento hoje conta como não passado
-- [ ] 2.5 `lib/domain/streak.ts`: `computeStreak(dates, today)`
-- [ ] 2.6 Testes de `streak`: sequência com hoje, sem hoje (termina ontem), quebrada ontem → 0, datas duplicadas, lista vazia
+- [x] 2.1 `lib/domain/local-date.ts`: `localDate(tz, now?)` → `YYYY-MM-DD` e `localHour(tz, now?)` → 0–23
+- [x] 2.2 Testes de `local-date`: virada de dia em `America/Sao_Paulo` vs UTC (ex.: 23:30 UTC-3 = 02:30 UTC do dia seguinte)
+- [x] 2.3 `lib/domain/recurring.ts`: `resolveDueDate(period, dayOfMonth)` e `isDuePassed(dueDate, today)`
+- [x] 2.4 Testes de `recurring`: dia 31 em abril → 30; dia 30/31 em fevereiro comum e bissexto; dia 1; vencimento hoje conta como não passado
+- [x] 2.5 `lib/domain/streak.ts`: `computeStreak(dates, today)`
+- [x] 2.6 Testes de `streak`: sequência com hoje, sem hoje (termina ontem), quebrada ontem → 0, datas duplicadas, lista vazia
 
 ## 3. Camada de dados
-- [ ] 3.1 `server/recurring.ts`: `listRecurring`, `createRecurring`, `updateRecurring`, `setRecurringActive`, `deleteRecurring` — todas escopadas por `userId`
-- [ ] 3.2 `applyRecurringToCycle(userId, cycleId)`: só roda se `recurringAppliedAt` for `null`; `createMany({ skipDuplicates: true })` + grava `recurringAppliedAt` na mesma `$transaction`
-- [ ] 3.3 Integrar `applyRecurringToCycle` ao `getOrCreateCycle` (apenas quando o ciclo é criado)
-- [ ] 3.4 `createRecurring` com `alsoThisMonth`: cria template e `Expense` do ciclo atual na mesma transação
-- [ ] 3.5 `server/checkin.ts`: `markNoSpend(userId, date)` idempotente (upsert na unique `userId_date`)
-- [ ] 3.6 `getRegisteredDates(userId, tz, days = 60)`: datas locais distintas de `Expense.createdAt` **sem** `recurringExpenseId` ∪ `DailyCheckin.date`
-- [ ] 3.7 Testes de integração: aplicação única por ciclo, concorrência (dois `getOrCreateCycle` simultâneos), exclusão não recria, pausada não lança, isolamento entre usuários
+- [x] 3.1 `server/recurring.ts`: `listRecurring`, `createRecurring`, `updateRecurring`, `setRecurringActive`, `deleteRecurring` — todas escopadas por `userId`
+- [x] 3.2 `applyRecurringToCycle(userId, cycleId)`: só roda se `recurringAppliedAt` for `null`; `createMany({ skipDuplicates: true })` + grava `recurringAppliedAt` na mesma `$transaction` (desvio: o carimbo é reivindicado primeiro com `updateMany where recurringAppliedAt null` e o `createMany` roda depois, ambos na mesma `$transaction`; um concorrente espera a linha e vê o carimbo já gravado, o que dá a mesma garantia de uma vez só)
+- [x] 3.3 Integrar `applyRecurringToCycle` ao `getOrCreateCycle` (apenas quando o ciclo é criado) (o ciclo e as contas fixas são criados na mesma `$transaction`; `upsert` virou `findUnique` + `create`, para só lançar quando o ciclo é de fato criado. `completeOnboarding` continua criando o ciclo sozinho, sem aplicar contas fixas, pois um usuário em onboarding ainda não tem nenhuma)
+- [x] 3.4 `createRecurring` com `alsoThisMonth`: cria template e `Expense` do ciclo atual na mesma transação (a assinatura recebe `alsoThisMonth: { cycleId }`, com o ciclo vindo do chamador via `getOrCreateCycle`; isso evita import circular entre `queries.ts` e `recurring.ts`)
+- [x] 3.5 `server/checkin.ts`: `markNoSpend(userId, date)` idempotente (upsert na unique `userId_date`)
+- [x] 3.6 `getRegisteredDates(userId, tz, days = 60)`: datas locais distintas de `Expense.createdAt` **sem** `recurringExpenseId` ∪ `DailyCheckin.date`
+- [x] 3.7 Testes de integração: aplicação única por ciclo, concorrência (dois `getOrCreateCycle` simultâneos), exclusão não recria, pausada não lança, isolamento entre usuários
 
 ## 4. Contas fixas — UI (spec: recurring-expenses)
 - [ ] 4.1 Página `/(app)/contas-fixas`: lista com descrição, valor, balde, dia, ativo/pausado

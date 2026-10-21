@@ -27,6 +27,9 @@ model UserSettings {
   timezone           String    @default("America/Sao_Paulo")
   defaultIncomeCents Int?      @map("default_income_cents")
   onboardedAt        DateTime? @map("onboarded_at") @db.Timestamptz(6)
+  reminderEnabled    Boolean   @default(false) @map("reminder_enabled")
+  reminderHour       Int       @default(20) @map("reminder_hour") // 0..23 (CHECK na migration)
+  lastReminderSentOn DateTime? @map("last_reminder_sent_on") @db.Date
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -34,14 +37,16 @@ model UserSettings {
 }
 
 model BudgetCycle {
-  id                String   @id @default(uuid()) @db.Uuid
-  userId            String   @map("user_id")
-  period            String   @db.Char(7) // 'YYYY-MM'
-  incomeCents       Int      @map("income_cents")
-  needsLimitCents   Int      @map("needs_limit_cents")
-  wantsLimitCents   Int      @map("wants_limit_cents")
-  savingsLimitCents Int      @map("savings_limit_cents")
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @map("user_id")
+  period             String    @db.Char(7) // 'YYYY-MM'
+  incomeCents        Int       @map("income_cents")
+  needsLimitCents    Int       @map("needs_limit_cents")
+  wantsLimitCents    Int       @map("wants_limit_cents")
+  savingsLimitCents  Int       @map("savings_limit_cents")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Carimbo de "contas fixas já aplicadas neste ciclo" (design.md D2).
+  recurringAppliedAt DateTime? @map("recurring_applied_at") @db.Timestamptz(6)
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   expenses Expense[]
@@ -51,21 +56,73 @@ model BudgetCycle {
 }
 
 model Expense {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @map("user_id")
-  cycleId     String   @map("cycle_id") @db.Uuid
-  amountCents Int      @map("amount_cents") // > 0 (CHECK na migration)
-  description String
-  bucket      Bucket
-  occurredOn  DateTime @map("occurred_on") @db.Date
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @map("user_id")
+  cycleId            String   @map("cycle_id") @db.Uuid
+  amountCents        Int      @map("amount_cents") // > 0 (CHECK na migration)
+  description        String
+  bucket             Bucket
+  occurredOn         DateTime @map("occurred_on") @db.Date
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  recurringExpenseId String?  @map("recurring_expense_id") @db.Uuid
 
-  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cycle BudgetCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cycle            BudgetCycle       @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  recurringExpense RecurringExpense? @relation(fields: [recurringExpenseId], references: [id], onDelete: SetNull)
 
+  @@unique([recurringExpenseId, cycleId])
   @@index([cycleId, bucket])
   @@index([userId, occurredOn])
   @@map("expenses")
+}
+
+// ─────────────────────────────────────────────
+// Contas fixas e lembrete diário
+// ─────────────────────────────────────────────
+
+model RecurringExpense {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id")
+  description String
+  amountCents Int      @map("amount_cents") // > 0 (CHECK na migration)
+  bucket      Bucket
+  dayOfMonth  Int      @map("day_of_month") // 1..31 (CHECK na migration)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([userId, active])
+  @@map("recurring_expenses")
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+model DailyCheckin {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id")
+  date      DateTime @db.Date
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("daily_checkins")
 }
 
 // ─────────────────────────────────────────────
@@ -92,6 +149,10 @@ model User {
   settings     UserSettings?
   budgetCycles BudgetCycle[]
   expenses     Expense[]
+
+  recurringExpenses RecurringExpense[]
+  pushSubscriptions PushSubscription[]
+  dailyCheckins     DailyCheckin[]
 
   @@map("user")
 }
