@@ -36,7 +36,7 @@
 ## Notas de implementação (seções 1–3)
 Desvios e interpretações em relação ao design:
 - **`all_within` e Investimentos:** "os três baldes dentro do limite" foi implementado como Necessidades e Lazer com `diffCents ≥ 0` e meta de guardar atingida (`savedCents ≥ savingsLimitCents`). Para Investimentos, "dentro do limite" literal exigiria guardar exatamente a meta; guardar mais é bom.
-- **`first_month`:** segue D3 ao pé da letra (ciclo criado depois do dia 1, `startedOnDay != null`). Isso também vale para quem pulou meses e abriu o app no meio de um mês posterior, não só para o primeiro ciclo.
+- **`first_month`:** (revisado) vale só com ciclo iniciado depois do dia 1 **e** sem ciclo de período anterior (`hasEarlierCycle`, calculado na query agregada); quem já tinha ciclos cai em `default`. Ver D3.
 - **Destinos do Lazer:** entram todos os gastos de Lazer do ciclo, contas fixas inclusas (ex.: streaming). O nome exibido é a grafia mais frequente *sem números* ("iFood 45" → "iFood"), pois as descrições cruas quase nunca se repetem; empate fica com a primeira vista (ordem de `createdAt`).
 - **Janela de dias (D4):** `cycleStartDate` fora do mês é limitada ao mês; datas registradas fora da janela são ignoradas.
 - **`getRegisteredDates` refatorado:** o SQL foi movido para `queryRegisteredDates` (limites `since`/`until`), reaproveitado por `getRegisteredDates` (sem teto superior, `'infinity'`) e pelo novo `getRegisteredDatesBetween(from, to)`. Comportamento original preservado (testes existentes passam).
@@ -56,3 +56,8 @@ Desvios e interpretações em relação ao design:
 - **Testes de página:** `server/summary-page.test.ts` chama as páginas reais com sessão, `notFound`/`redirect` e `after()` substituídos; cobre o 404 do período de outro usuário, inválido, atual, futuro e sem ciclo.
 - **4.6 (390px):** validado com `next dev` + `DEV_AUTH_BYPASS_USER_ID` (só por variável de ambiente), Chromium headless em 390px, dados semeados no banco de teste com ciclo do mês anterior real (2026-09), sem mexer no relógio: mês no azul, com estouro, incompleto (início dia 15) e sem destinos de Lazer. Usuário, ciclos e eventos de teste removidos depois. O clique em "Começar [mês]" não foi exercitado no navegador (a gravação é coberta por `markSummarySeenFor` nos testes de integração).
 - **6.3** fica em aberto: o deploy é manual.
+
+## Ajustes pré-deploy
+- **Failsafe:** "Começar [mês]" navega para `/?summary=seen` mesmo se `markSummarySeen` falhar (try/catch no botão); o painel não redireciona nesse request. O parâmetro vale só para ele, e só o valor exato `seen`. Teste de integração com `markSummarySeenFor` falhando por mock.
+- **E2E (`pnpm test:e2e`):** `e2e/monthly-summary.test.ts` sobe `next dev -p 3100` com o bypass, semeia usuário + ciclo do mês anterior com atividade e dirige o Chromium (390px) por `playwright-core@1.62.1` (nova devDependency, sem download de browser: usa o Chromium já em `~/.cache/ms-playwright`). Fluxo: painel → redirect → "Começar" → painel → recarga sem novo redirect → `last_summary_seen_period` gravado. Limpa servidor e dados no fim; fora do `pnpm test`. Precisa da porta 3100 livre e nenhum outro `next dev` neste diretório. Mutação (removendo a gravação no botão) faz o teste falhar.
+- **`all_within` e `first_month`:** design.md D3 e a spec foram alinhados ao comportamento implementado (esta última também ganhou o cenário "Mês incompleto de quem já tinha ciclos").

@@ -22,6 +22,7 @@ function input(overrides: Partial<MonthlySummaryInput> = {}): MonthlySummaryInpu
     wantsExpenses: [],
     registeredDates: days(5),
     cycleStartDate: `${OCT}-01`,
+    hasEarlierCycle: false,
     ...overrides,
   };
 }
@@ -124,6 +125,21 @@ describe("buildMonthlySummary — destaque", () => {
       kind: "first_month",
       text: "Primeiro mês concluído. Agora você sabe para onde vai seu dinheiro.",
     });
+  });
+
+  it("first_month não vale com ciclo anterior: mês incompleto cai em default", () => {
+    const s = buildMonthlySummary(
+      input({ cycleStartDate: `${OCT}-15`, registeredDates: days(3, 15), hasEarlierCycle: true })
+    );
+    expect(s.startedOnDay).toBe(15);
+    expect(s.highlight.kind).toBe("default");
+  });
+
+  it("com ciclo anterior, as regras de cima seguem valendo (consistent)", () => {
+    const s = buildMonthlySummary(
+      input({ cycleStartDate: `${OCT}-15`, registeredDates: days(15, 15), hasEarlierCycle: true })
+    );
+    expect(s.highlight.kind).toBe("consistent");
   });
 
   it("default: nenhuma regra anterior", () => {

@@ -190,6 +190,25 @@ describe("getMonthlySummaryData", () => {
     expect(data!.registeredDates).toEqual(["2031-06-09", "2031-06-12", "2031-06-15", "2031-06-30"]);
   });
 
+  it("hasEarlierCycle: só é verdadeiro com ciclo do próprio usuário de período anterior", async () => {
+    const alone = await newUser();
+    await newCycle(alone);
+    expect((await getMonthlySummaryData(alone, PERIOD))!.hasEarlierCycle).toBe(false);
+
+    const withEarlier = await newUser();
+    await newCycle(withEarlier, "2031-04");
+    await newCycle(withEarlier);
+    expect((await getMonthlySummaryData(withEarlier, PERIOD))!.hasEarlierCycle).toBe(true);
+
+    // ciclo posterior não conta, nem o de outro usuário
+    const laterOnly = await newUser();
+    await newCycle(laterOnly);
+    await newCycle(laterOnly, "2031-08");
+    const other = await newUser();
+    await newCycle(other, "2031-03");
+    expect((await getMonthlySummaryData(laterOnly, PERIOD))!.hasEarlierCycle).toBe(false);
+  });
+
   it("cycleStartDate é a data local de criação do ciclo", async () => {
     const userId = await newUser();
     // 2031-06-16T01:30Z é 15/06 22:30 em São Paulo

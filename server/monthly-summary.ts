@@ -68,6 +68,7 @@ interface CycleTotalsRow {
   wantsLimit: number;
   savingsLimit: number;
   createdAt: Date;
+  hasEarlierCycle: boolean;
   needsSpent: number;
   wantsSpent: number;
   savingsSpent: number;
@@ -99,6 +100,10 @@ export async function getMonthlySummaryData(
       c.wants_limit_cents   AS "wantsLimit",
       c.savings_limit_cents AS "savingsLimit",
       c.created_at          AS "createdAt",
+      EXISTS (
+        SELECT 1 FROM budget_cycles p
+         WHERE p.user_id = c.user_id AND p.period < c.period
+      )                     AS "hasEarlierCycle",
       COALESCE(SUM(e.amount_cents) FILTER (WHERE e.bucket = 'needs'), 0)::int   AS "needsSpent",
       COALESCE(SUM(e.amount_cents) FILTER (WHERE e.bucket = 'wants'), 0)::int   AS "wantsSpent",
       COALESCE(SUM(e.amount_cents) FILTER (WHERE e.bucket = 'savings'), 0)::int AS "savingsSpent",
@@ -137,6 +142,7 @@ export async function getMonthlySummaryData(
     wantsExpenses,
     registeredDates,
     cycleStartDate: localDate(timeZone, row.createdAt),
+    hasEarlierCycle: row.hasEarlierCycle,
   };
 }
 

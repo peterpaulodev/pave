@@ -40,7 +40,11 @@ function formatShortDate(date: Date): string {
   return `${day}/${month}`;
 }
 
-export default async function PainelPage() {
+export default async function PainelPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ summary?: string | string[] }>;
+}) {
   // app/(app)/layout.tsx already guarantees onboarding is done before any
   // page in this group renders.
   const { id: userId } = await getSessionUserOrRedirect();
@@ -51,8 +55,11 @@ export default async function PainelPage() {
 
   // Server-side, before anything renders: the first visit of a new month
   // shows last month's summary (only here — /novo never redirects).
+  // `?summary=seen` is the "Começar" button's failsafe: it skips the redirect
+  // for this request only, so a failed write can't trap the user in the summary.
+  const { summary: summaryParam } = await searchParams;
   const lastPeriod = previousPeriod(period);
-  if (await getSummaryEligibility(userId, lastPeriod)) {
+  if (summaryParam !== "seen" && (await getSummaryEligibility(userId, lastPeriod))) {
     redirect(`/resumo/${lastPeriod}?auto=1`);
   }
   const showSummaryLink =

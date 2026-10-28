@@ -52,7 +52,8 @@ ciclos são criados.
 Função pura `buildMonthlySummary(input): MonthlySummary` em
 `lib/domain/monthly-summary.ts`. Entrada: limites do ciclo, somas por balde, somas
 de contas fixas por balde, gastos de Lazer (descrição e valor), dias registrados,
-dias do mês considerados e data de início.
+dias do mês considerados, data de início e se o usuário tem algum ciclo de período
+anterior (`hasEarlierCycle`).
 
 Saída:
 - **Por balde:** `limitCents`, `spentCents`, `diffCents` (`limit − spent`; positivo
@@ -66,12 +67,17 @@ Saída:
   normalização de `suggest-bucket.ts`. O nome exibido é a descrição mais frequente
   do grupo. Menos de 2 gastos de Lazer: seção omitida.
 - **Destaque:** um único, pela primeira regra que se aplicar:
-  1. `all_within`: os três baldes dentro do limite e `savedCents ≥ savingsLimitCents`
+  1. `all_within`: Necessidades e Lazer dentro do limite e `savedCents ≥ savingsLimitCents`
+     (Investimentos é meta, não teto: guardar além do limite é bom, então ele entra pela
+     meta e não pela regra "dentro do limite")
      → "Mês fechado no azul: todos os baldes dentro do planejado."
   2. `saved_goal`: meta de investimento atingida → "Você bateu a meta de guardar 20%."
   3. `wants_within`: Lazer dentro do limite → "Seu lazer coube no planejado, com R$ X de folga."
   4. `consistent`: `registeredDays / trackedDays ≥ 0.7` → "Você registrou em N dos M dias. É assim que o controle funciona."
-  5. `first_month`: ciclo começou depois do dia 1 → "Primeiro mês concluído. Agora você sabe para onde vai seu dinheiro."
+  5. `first_month`: ciclo começou depois do dia 1 **e** o usuário não tem nenhum ciclo de
+     período anterior (`hasEarlierCycle` falso) → "Primeiro mês concluído. Agora você
+     sabe para onde vai seu dinheiro." Quem já tinha ciclos e só começou o mês tarde não
+     está no primeiro mês: cai na regra 6.
   6. `default` → "Mês fechado. Cada mês registrado deixa o próximo mais fácil."
 - **Tom:** estouro de balde é mostrado como fato ("R$ 120 acima do planejado"), sem
   vermelho de alerta e sem frases de culpa.
@@ -90,6 +96,7 @@ Saída:
 - `getMonthlySummaryData(userId, period)` → entrada de `buildMonthlySummary`:
   - somas por balde e somas de conta fixa por balde em uma query (`SUM ... FILTER`);
   - gastos de Lazer `{ description, amountCents }` do ciclo;
+  - `hasEarlierCycle` (existe ciclo do usuário com período anterior), na mesma query das somas;
   - dias registrados no mês reaproveitando a lógica de `getRegisteredDates`
     (gastos manuais por `created_at` local + `daily_checkins`), filtrados ao período.
 - Tudo escopado por `userId`; período de outro usuário → `notFound()`.

@@ -22,8 +22,13 @@ export function StartMonthButton({
       disabled={pending}
       onClick={() =>
         startTransition(async () => {
-          await markSummarySeen(period);
-          router.push("/");
+          try {
+            await markSummarySeen(period);
+          } catch {
+            // Even if the write failed, go on: the panel skips its redirect
+            // for `?summary=seen`, and the summary just shows again next visit.
+          }
+          router.push("/?summary=seen");
         })
       }
     >

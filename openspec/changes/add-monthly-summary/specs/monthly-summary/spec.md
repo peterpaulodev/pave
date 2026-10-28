@@ -50,12 +50,13 @@ relação à meta.
 
 ### Requirement: Destaque do mês
 O sistema SHALL exibir um único destaque principal, escolhido pela primeira regra
-aplicável, na ordem: todos os baldes dentro do planejado, meta de guardar atingida,
-lazer dentro do limite, registro em ao menos 70% dos dias, primeiro mês concluído,
-mensagem padrão.
+aplicável, na ordem: Necessidades e Lazer dentro do limite com a meta de guardar
+atingida, meta de guardar atingida, lazer dentro do limite, registro em ao menos 70%
+dos dias, primeiro mês concluído (ciclo iniciado depois do dia 1, sem ciclo de mês
+anterior), mensagem padrão.
 
 #### Scenario: Mês todo no azul
-- **WHEN** os três baldes ficaram dentro do limite e a meta de guardar foi atingida
+- **WHEN** Necessidades e Lazer ficaram dentro do limite e a meta de guardar foi atingida
 - **THEN** o destaque é "Mês fechado no azul: todos os baldes dentro do planejado."
 
 #### Scenario: Só a constância
@@ -63,8 +64,13 @@ mensagem padrão.
 - **THEN** o destaque é "Você registrou em 25 dos 31 dias. É assim que o controle funciona."
 
 #### Scenario: Primeiro mês incompleto
-- **WHEN** o ciclo começou no dia 15, nenhuma regra anterior se aplica
+- **WHEN** o ciclo começou no dia 15, o usuário não tem ciclo de mês anterior e nenhuma regra anterior se aplica
 - **THEN** o destaque é "Primeiro mês concluído. Agora você sabe para onde vai seu dinheiro."
+
+#### Scenario: Mês incompleto de quem já tinha ciclos
+- **WHEN** o ciclo começou no dia 15 e o usuário tem ciclo de um mês anterior
+- **AND** nenhuma regra anterior se aplica
+- **THEN** o destaque é "Mês fechado. Cada mês registrado deixa o próximo mais fácil."
 
 ### Requirement: Destinos do lazer
 O sistema SHALL exibir os até 3 destinos com maior soma no balde de Lazer,

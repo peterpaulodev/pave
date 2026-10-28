@@ -17,6 +17,8 @@ export interface MonthlySummaryInput {
   registeredDates: string[];
   /** Local date ("YYYY-MM-DD") the cycle was created on. */
   cycleStartDate: string;
+  /** The user has a cycle of a period before `period` (so this isn't their first month). */
+  hasEarlierCycle: boolean;
 }
 
 export type HighlightKind =
@@ -150,7 +152,7 @@ export function buildMonthlySummary(input: MonthlySummaryInput): MonthlySummary 
       kind: "consistent",
       text: `Você registrou em ${registeredDays} dos ${trackedDays} dias. É assim que o controle funciona.`,
     };
-  } else if (startedOnDay !== null) {
+  } else if (startedOnDay !== null && !input.hasEarlierCycle) {
     highlight = {
       kind: "first_month",
       text: "Primeiro mês concluído. Agora você sabe para onde vai seu dinheiro.",

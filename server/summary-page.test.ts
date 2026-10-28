@@ -9,6 +9,7 @@ import { currentPeriod, previousPeriod } from "@/lib/domain/period";
 // by a collector we flush by hand (it only works inside a request).
 const state = vi.hoisted(() => ({
   userId: "",
+  failSeen: false,
   pending: [] as Array<() => Promise<void> | void>,
 }));
 
@@ -23,6 +24,17 @@ vi.mock("next/navigation", () => ({
     throw new Error(`NEXT_REDIRECT:${url}`);
   },
 }));
+// markSummarySeenFor is the real one unless a test flips `failSeen`.
+vi.mock("@/server/monthly-summary", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/server/monthly-summary")>();
+  return {
+    ...actual,
+    markSummarySeenFor: (...args: Parameters<typeof actual.markSummarySeenFor>) =>
+      state.failSeen
+        ? Promise.reject(new Error("falha simulada ao gravar o visto"))
+        : actual.markSummarySeenFor(...args),
+  };
+});
 vi.mock("next/server", () => ({
   after: (cb: () => Promise<void> | void) => {
     state.pending.push(cb);
@@ -30,6 +42,7 @@ vi.mock("next/server", () => ({
 }));
 
 const { default: ResumoPage } = await import("@/app/(app)/resumo/[period]/page");
+const { markSummarySeen } = await import("@/actions/summary");
 const { default: NovoPage } = await import("@/app/(app)/novo/page");
 const { default: PainelPage } = await import("@/app/(app)/page");
 
@@ -82,7 +95,12 @@ async function viewedEvents(userId: string) {
   return prisma.event.findMany({ where: { userId, name: "monthly_summary_viewed" } });
 }
 
+function panel(searchParams: { summary?: string } = {}) {
+  return PainelPage({ searchParams: Promise.resolve(searchParams) });
+}
+
 beforeEach(() => {
+  state.failSeen = false;
   state.pending.length = 0;
 });
 
@@ -182,14 +200,14 @@ describe("painel e /novo", () => {
     const userId = await newUser();
     await seedCycle(userId, PREVIOUS);
     state.userId = userId;
-    await expect(PainelPage()).rejects.toThrow(`NEXT_REDIRECT:/resumo/${PREVIOUS}?auto=1`);
+    await expect(panel()).rejects.toThrow(`NEXT_REDIRECT:/resumo/${PREVIOUS}?auto=1`);
   });
 
   it("painel não redireciona depois de confirmado", async () => {
     const userId = await newUser({ lastSummarySeenPeriod: PREVIOUS });
     await seedCycle(userId, PREVIOUS);
     state.userId = userId;
-    await expect(PainelPage()).resolves.toBeTruthy();
+    await expect(panel()).resolves.toBeTruthy();
   });
 
   it("painel não redireciona se o mês anterior não teve atividade", async () => {
@@ -201,7 +219,31 @@ describe("painel e /novo", () => {
       },
     });
     state.userId = userId;
-    await expect(PainelPage()).resolves.toBeTruthy();
+    await expect(panel()).resolves.toBeTruthy();
+  });
+
+  it("failsafe: com markSummarySeen falhando, ?summary=seen renderiza o painel sem redirect", async () => {
+    const userId = await newUser();
+    await seedCycle(userId, PREVIOUS);
+    state.userId = userId;
+    state.failSeen = true;
+
+    // o botão chama a action, que falha: nada é gravado...
+    await expect(markSummarySeen(PREVIOUS)).rejects.toThrow("falha simulada");
+    const settings = await prisma.userSettings.findUniqueOrThrow({ where: { userId } });
+    expect(settings.lastSummarySeenPeriod).toBeNull();
+
+    // ...mas o painel com o parâmetro não prende o usuário no resumo
+    await expect(panel({ summary: "seen" })).resolves.toBeTruthy();
+    // e o parâmetro vale só para aquele request: sem ele, redireciona de novo
+    await expect(panel()).rejects.toThrow(`NEXT_REDIRECT:/resumo/${PREVIOUS}?auto=1`);
+  });
+
+  it("?summary com outro valor não pula o redirect", async () => {
+    const userId = await newUser();
+    await seedCycle(userId, PREVIOUS);
+    state.userId = userId;
+    await expect(panel({ summary: "1" })).rejects.toThrow(`NEXT_REDIRECT:/resumo/${PREVIOUS}?auto=1`);
   });
 
   it("/novo NÃO redireciona, mesmo com resumo pendente", async () => {
