@@ -23,16 +23,19 @@ enum Bucket {
 }
 
 model UserSettings {
-  userId             String    @id @map("user_id")
-  timezone           String    @default("America/Sao_Paulo")
-  defaultIncomeCents Int?      @map("default_income_cents")
-  onboardedAt        DateTime? @map("onboarded_at") @db.Timestamptz(6)
-  reminderEnabled    Boolean   @default(false) @map("reminder_enabled")
-  reminderHour       Int       @default(20) @map("reminder_hour") // 0..23 (CHECK na migration)
-  lastReminderSentOn DateTime? @map("last_reminder_sent_on") @db.Date
+  userId                String    @id @map("user_id")
+  timezone              String    @default("America/Sao_Paulo")
+  defaultIncomeCents    Int?      @map("default_income_cents")
+  onboardedAt           DateTime? @map("onboarded_at") @db.Timestamptz(6)
+  reminderEnabled       Boolean   @default(false) @map("reminder_enabled")
+  reminderHour          Int       @default(20) @map("reminder_hour") // 0..23 (CHECK na migration)
+  lastReminderSentOn    DateTime? @map("last_reminder_sent_on") @db.Date
   // Show the leftover leisure amount in the reminder text (off by default: the
   // notification is visible on the lock screen).
-  reminderShowAmount Boolean   @default(false) @map("reminder_show_amount")
+  reminderShowAmount    Boolean   @default(false) @map("reminder_show_amount")
+  // Último período ("YYYY-MM") cujo resumo o usuário confirmou ter lido
+  // (openspec/changes/add-monthly-summary D2).
+  lastSummarySeenPeriod String?   @map("last_summary_seen_period") @db.Char(7)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -1,3 +1,5 @@
+import { resolveDueDate } from "./recurring";
+
 /**
  * Returns the current period ("YYYY-MM") as of the given IANA time zone's
  * local wall-clock date — not UTC's. Near a month boundary, the local date
@@ -42,4 +44,38 @@ export function todayInTimezone(timeZone: string): string {
   }
 
   return `${year}-${month}-${day}`;
+}
+
+const PERIOD_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+function parsePeriod(period: string): { year: number; month: number } {
+  const match = PERIOD_PATTERN.exec(period);
+  if (!match) {
+    throw new Error(`Período inválido: "${period}" (esperado YYYY-MM).`);
+  }
+  return { year: Number(match[1]), month: Number(match[2]) };
+}
+
+/** The period before `period` ("YYYY-MM"); January goes to the previous December. */
+export function previousPeriod(period: string): string {
+  const { year, month } = parsePeriod(period);
+  const [y, m] = month === 1 ? [year - 1, 12] : [year, month - 1];
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Month name in pt-BR, lowercase ("outubro"), of `period`. A "pure" calendar
+ * month: formatted in UTC from a UTC date, so the process time zone never
+ * shifts it.
+ */
+export function periodLabel(period: string): string {
+  const { year, month } = parsePeriod(period);
+  return new Intl.DateTimeFormat("pt-BR", { month: "long", timeZone: "UTC" }).format(
+    new Date(Date.UTC(year, month - 1, 1))
+  );
+}
+
+/** Number of days in `period` ("YYYY-MM"), by the same last-day rule recurring expenses use. */
+export function daysInPeriod(period: string): number {
+  return Number(resolveDueDate(period, 31).slice(-2));
 }

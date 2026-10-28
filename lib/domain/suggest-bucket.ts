@@ -29,7 +29,8 @@ const KEYWORD_BUCKETS: Record<string, Bucket> = {
   poupanca: "savings",
 };
 
-function normalize(text: string): string {
+/** Lowercases and strips accents ("Açougue" → "acougue"); nothing else. */
+export function normalizeText(text: string): string {
   return text
     .toLowerCase()
     .normalize("NFD")
@@ -42,7 +43,7 @@ function normalize(text: string): string {
  * `null` when no keyword matches.
  */
 export function suggestBucket(description: string): Bucket | null {
-  const words = normalize(description).split(/\W+/).filter(Boolean);
+  const words = normalizeText(description).split(/\W+/).filter(Boolean);
 
   for (const word of words) {
     const bucket = KEYWORD_BUCKETS[word];

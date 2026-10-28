@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { suggestBucket } from "./suggest-bucket";
+import { normalizeText, suggestBucket } from "./suggest-bucket";
 
 describe("suggestBucket", () => {
   it("sugere needs para mercado", () => {
@@ -20,5 +20,11 @@ describe("suggestBucket", () => {
 
   it("ignora acentos", () => {
     expect(suggestBucket("açougue")).toBe("needs");
+  });
+});
+
+describe("normalizeText", () => {
+  it("põe em minúsculas e remove acentos, sem mexer no resto", () => {
+    expect(normalizeText("Açougue DO Zé 10")).toBe("acougue do ze 10");
   });
 });
