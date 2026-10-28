@@ -1,10 +1,7 @@
 "use server";
 
-import { z } from "zod";
 import { getSessionUserOrRedirect } from "@/lib/auth/session";
-import { markSummarySeenFor } from "@/server/monthly-summary";
-
-const periodSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+import { markSummarySeenFor, periodSchema } from "@/server/monthly-summary";
 
 /** "Começar [mês]": confirms the summary was read. Only the previous period
  * (as the server computes it) is recorded — any other value is ignored. */

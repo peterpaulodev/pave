@@ -176,3 +176,11 @@ export function buildMonthlySummary(input: MonthlySummaryInput): MonthlySummary 
     highlight,
   };
 }
+
+const SUMMARY_LINK_LAST_DAY = 7;
+
+/** Whether the panel offers the "Ver resumo" link: days 1–7 of the month.
+ * `today` is the user's local date ("YYYY-MM-DD"). */
+export function canShowSummaryLink(today: string): boolean {
+  return day(today) <= SUMMARY_LINK_LAST_DAY;
+}

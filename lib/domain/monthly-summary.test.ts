@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatBRL } from "@/lib/money";
-import { buildMonthlySummary, type MonthlySummaryInput } from "./monthly-summary";
+import { buildMonthlySummary, canShowSummaryLink, type MonthlySummaryInput } from "./monthly-summary";
 
 const OCT = "2026-10";
 
@@ -278,5 +278,17 @@ describe("buildMonthlySummary — destinos do Lazer", () => {
       })
     );
     expect(s.wantsDestinations).toEqual([{ name: "123", totalCents: 200 }]);
+  });
+});
+
+describe("canShowSummaryLink", () => {
+  it("vale nos dias 1 a 7 do mês local", () => {
+    expect(canShowSummaryLink("2026-11-01")).toBe(true);
+    expect(canShowSummaryLink("2026-11-07")).toBe(true);
+  });
+
+  it("não vale do dia 8 em diante", () => {
+    expect(canShowSummaryLink("2026-11-08")).toBe(false);
+    expect(canShowSummaryLink("2026-11-30")).toBe(false);
   });
 });

@@ -1,12 +1,20 @@
 import "server-only";
+import { z } from "zod";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { localDate } from "@/lib/domain/local-date";
-import { daysInPeriod, previousPeriod } from "@/lib/domain/period";
-import type { MonthlySummaryInput } from "@/lib/domain/monthly-summary";
+import { daysInPeriod, periodLabel, previousPeriod } from "@/lib/domain/period";
+import {
+  buildMonthlySummary,
+  type MonthlySummary,
+  type MonthlySummaryInput,
+} from "@/lib/domain/monthly-summary";
 import { getRegisteredDatesBetween } from "./checkin";
 
 const DEFAULT_TIMEZONE = "America/Sao_Paulo";
+
+/** "YYYY-MM" with a real month (01–12). */
+export const periodSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
 function monthBounds(period: string): { first: string; last: string } {
   return { first: `${period}-01`, last: `${period}-${String(daysInPeriod(period)).padStart(2, "0")}` };
@@ -157,4 +165,54 @@ export async function markSummarySeenFor(
     data: { lastSummarySeenPeriod: expected },
   });
   return count > 0;
+}
+
+/** Whether the user has a cycle for `period` — i.e. a summary exists to review. */
+export async function hasCycleForPeriod(userId: string, period: string): Promise<boolean> {
+  const cycle = await prisma.budgetCycle.findUnique({
+    where: { userId_period: { userId, period } },
+    select: { id: true },
+  });
+  return cycle !== null;
+}
+
+export interface SummaryView {
+  period: string;
+  summary: MonthlySummary;
+  /** `period` is the month right before the user's current one. */
+  isPrevious: boolean;
+  /** Name of the user's current month ("novembro"), for the "Começar" button. */
+  currentMonthLabel: string;
+}
+
+/**
+ * What `/resumo/[period]` shows (design.md D6): `null` — the page answers
+ * 404 — unless `rawPeriod` is a valid past period (before the user's current
+ * month, in their time zone) that has a cycle of this user's own.
+ */
+export async function getSummaryView(
+  userId: string,
+  rawPeriod: string,
+  now: Date = new Date()
+): Promise<SummaryView | null> {
+  const parsed = periodSchema.safeParse(rawPeriod);
+  if (!parsed.success) return null;
+  const period = parsed.data;
+
+  const settings = await prisma.userSettings.findUnique({
+    where: { userId },
+    select: { timezone: true },
+  });
+  const current = localDate(settings?.timezone ?? DEFAULT_TIMEZONE, now).slice(0, 7);
+  if (period >= current) return null;
+
+  const data = await getMonthlySummaryData(userId, period);
+  if (!data) return null;
+
+  return {
+    period,
+    summary: buildMonthlySummary(data),
+    isPrevious: period === previousPeriod(current),
+    currentMonthLabel: periodLabel(current),
+  };
 }

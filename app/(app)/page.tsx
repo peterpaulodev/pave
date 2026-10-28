@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Plus } from "lucide-react";
 import { getSessionUserOrRedirect } from "@/lib/auth/session";
 import {
@@ -8,7 +9,9 @@ import {
   getUserSettings,
   listExpenses,
 } from "@/server/queries";
-import { currentPeriod } from "@/lib/domain/period";
+import { currentPeriod, periodLabel, previousPeriod } from "@/lib/domain/period";
+import { canShowSummaryLink } from "@/lib/domain/monthly-summary";
+import { getSummaryEligibility, hasCycleForPeriod } from "@/server/monthly-summary";
 import { localDate } from "@/lib/domain/local-date";
 import { computeStreak } from "@/lib/domain/streak";
 import { getRegisteredDates, hasManualExpense } from "@/server/checkin";
@@ -44,6 +47,16 @@ export default async function PainelPage() {
   const settings = await getUserSettings(userId);
   const timezone = settings?.timezone ?? "America/Sao_Paulo";
   const period = currentPeriod(timezone);
+  const today = localDate(timezone);
+
+  // Server-side, before anything renders: the first visit of a new month
+  // shows last month's summary (only here — /novo never redirects).
+  const lastPeriod = previousPeriod(period);
+  if (await getSummaryEligibility(userId, lastPeriod)) {
+    redirect(`/resumo/${lastPeriod}?auto=1`);
+  }
+  const showSummaryLink =
+    canShowSummaryLink(today) && (await hasCycleForPeriod(userId, lastPeriod));
 
   // 8.6: creates the cycle on demand if this is the first visit to a new
   // month, seeded from the user's default income.
@@ -54,7 +67,6 @@ export default async function PainelPage() {
     getRecurringTotalsByBucket(userId, cycle.id),
     countRecurring(userId),
   ]);
-  const today = localDate(timezone);
   const [registeredDates, hasSavedExpense, allowanceInputs] = await Promise.all([
     getRegisteredDates(userId, timezone),
     hasManualExpense(userId),
@@ -70,6 +82,16 @@ export default async function PainelPage() {
   return (
     <div className="flex flex-col gap-6 pb-20">
       <h1 className="text-xl font-semibold">Seu mês</h1>
+
+      {showSummaryLink && (
+        <Link
+          href={`/resumo/${lastPeriod}`}
+          prefetch={false}
+          className="-mt-3 min-h-11 self-start py-2 text-sm font-medium underline underline-offset-4"
+        >
+          Ver resumo de {periodLabel(lastPeriod)}
+        </Link>
+      )}
 
       {allowance && <DailyAllowanceCard allowance={allowance} />}
 

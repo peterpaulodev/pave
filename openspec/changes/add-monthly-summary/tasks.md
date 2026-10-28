@@ -16,21 +16,21 @@
 - [x] 3.4 Testes de integração: elegibilidade (com atividade, só contas fixas, sem ciclo, já visto), soma por balde ignorando outros ciclos e outros usuários, dias registrados sem contar gasto automático, `markSummarySeen` ignorando período antigo
 
 ## 4. UI (spec: monthly-summary)
-- [ ] 4.1 Painel: checar elegibilidade e redirecionar para `/resumo/[previousPeriod]?auto=1`
-- [ ] 4.2 `app/(app)/resumo/[period]/page.tsx`: validação de `period` com zod; `notFound()` para inválido, atual, futuro ou sem ciclo do usuário
-- [ ] 4.3 Tela mobile-first: destaque no topo, cards dos três baldes, "Você guardou", contas fixas, destinos do Lazer, dias registrados, aviso de mês incompleto
-- [ ] 4.4 Botão "Começar [mês atual]" chama `markSummarySeen` e volta ao painel; em resumo de mês antigo, o botão é "Voltar"
-- [ ] 4.5 Link "Ver resumo de [mês]" no painel nos dias 1 a 7, quando houver resumo do mês anterior
-- [ ] 4.6 Validar em 390px com o bypass de dev: mês no azul, mês com estouro, mês incompleto, sem destinos de Lazer
+- [x] 4.1 Painel: checar elegibilidade e redirecionar para `/resumo/[previousPeriod]?auto=1`
+- [x] 4.2 `app/(app)/resumo/[period]/page.tsx`: validação de `period` com zod; `notFound()` para inválido, atual, futuro ou sem ciclo do usuário
+- [x] 4.3 Tela mobile-first: destaque no topo, cards dos três baldes, "Você guardou", contas fixas, destinos do Lazer, dias registrados, aviso de mês incompleto
+- [x] 4.4 Botão "Começar [mês atual]" chama `markSummarySeen` e volta ao painel; em resumo de mês antigo, o botão é "Voltar"
+- [x] 4.5 Link "Ver resumo de [mês]" no painel nos dias 1 a 7, quando houver resumo do mês anterior
+- [x] 4.6 Validar em 390px com o bypass de dev: mês no azul, mês com estouro, mês incompleto, sem destinos de Lazer
 
 ## 5. Analytics
-- [ ] 5.1 Adicionar `monthly_summary_viewed: { auto: boolean }` ao `EventMap`
-- [ ] 5.2 Registrar ao renderizar `/resumo/[period]` com `trackEvent` em `after()`
-- [ ] 5.3 Teste de integração: evento gravado com `auto` correto e sem outras props
+- [x] 5.1 Adicionar `monthly_summary_viewed: { auto: boolean }` ao `EventMap`
+- [x] 5.2 Registrar ao renderizar `/resumo/[period]` com `trackEvent` em `after()`
+- [x] 5.3 Teste de integração: evento gravado com `auto` correto e sem outras props
 
 ## 6. Validação final
-- [ ] 6.1 `pnpm test`, `pnpm test:integration` (branch `dev`), `tsc --noEmit`, `pnpm lint`, `pnpm build`
-- [ ] 6.2 `openspec validate add-monthly-summary --strict`
+- [x] 6.1 `pnpm test`, `pnpm test:integration` (branch `dev`), `tsc --noEmit`, `pnpm lint`, `pnpm build`
+- [x] 6.2 `openspec validate add-monthly-summary --strict`
 - [ ] 6.3 Deploy antes de 1º de novembro
 
 ## Notas de implementação (seções 1–3)
@@ -45,3 +45,14 @@ Desvios e interpretações em relação ao design:
 - **`markSummarySeen`:** a lógica está em `markSummarySeenFor(userId, period, now)` (`server/monthly-summary.ts`, testável); `actions/summary.ts` só valida o formato, pega o `userId` da sessão e delega. Período diferente do mês anterior local é ignorado em silêncio.
 - **Elegibilidade (D1):** até 3 consultas, na ordem ciclo → settings → atividade (`EXISTS`), parando na primeira que falhar.
 - **Teste de mutação (3.x):** removida a condição de atividade em `getSummaryEligibility`; 4 testes falharam (só contas fixas, ciclo vazio, outro usuário, check-in de outro mês). Revertido.
+
+## Notas de implementação (seções 4–6)
+- **Cores:** `lib/domain/buckets.ts` só exporta rótulos e proporções (não há cores de balde); a tela usa `BUCKET_LABELS`/`BUCKET_ORDER` e os tokens neutros do tema. Estouro aparece como texto ("R$ X acima do planejado"), sem `destructive`.
+- **Botão:** "Começar [mês atual]" só quando `auto=1` **e** o período é o mês anterior; em qualquer outro caso, "Voltar". Abrir o mês anterior pelo link do painel (sem `auto`) mostra "Voltar" e não grava nada.
+- **Evento:** `auto` é `true` só com `?auto=1` no mês anterior; `?auto=1` forjado em mês antigo grava `false`.
+- **Contas fixas:** o card é omitido quando o total é zero (a spec exige o total quando há contas fixas).
+- **Link no painel:** `canShowSummaryLink(today)` (dias 1–7 locais) + existência de ciclo do mês anterior; `prefetch={false}` para a visita ao resumo não ser contada por prefetch.
+- **Redirect:** feito em `PainelPage` antes de criar o ciclo do mês novo e de qualquer consulta do painel; `/novo` não tem redirect (coberto por teste).
+- **Testes de página:** `server/summary-page.test.ts` chama as páginas reais com sessão, `notFound`/`redirect` e `after()` substituídos; cobre o 404 do período de outro usuário, inválido, atual, futuro e sem ciclo.
+- **4.6 (390px):** validado com `next dev` + `DEV_AUTH_BYPASS_USER_ID` (só por variável de ambiente), Chromium headless em 390px, dados semeados no banco de teste com ciclo do mês anterior real (2026-09), sem mexer no relógio: mês no azul, com estouro, incompleto (início dia 15) e sem destinos de Lazer. Usuário, ciclos e eventos de teste removidos depois. O clique em "Começar [mês]" não foi exercitado no navegador (a gravação é coberta por `markSummarySeenFor` nos testes de integração).
+- **6.3** fica em aberto: o deploy é manual.

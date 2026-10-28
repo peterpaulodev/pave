@@ -19,6 +19,7 @@ export type EventMap = {
   reminder_disabled: Record<string, never>;
   reminder_sent: Record<string, never>;
   no_spend_checkin: { via: "app" | "notification" };
+  monthly_summary_viewed: { auto: boolean };
 };
 
 export type EventName = keyof EventMap;
@@ -34,6 +35,7 @@ const EVENT_NAME_SET = {
   reminder_disabled: true,
   reminder_sent: true,
   no_spend_checkin: true,
+  monthly_summary_viewed: true,
 } satisfies Record<EventName, true>;
 
 export const EVENT_NAMES = Object.keys(EVENT_NAME_SET) as EventName[];
