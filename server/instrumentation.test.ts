@@ -68,7 +68,10 @@ describe("expense_created", () => {
     expect(await events(userId)).toEqual([
       {
         name: "expense_created",
-        props: { source: "quick_entry", bucket: "needs", suggestedBucket: "needs", overridden: false },
+        props: {
+          source: "quick_entry", bucket: "needs", suggestedBucket: "needs", overridden: false,
+          usedChip: false, chipSource: null,
+        },
       },
     ]);
   });

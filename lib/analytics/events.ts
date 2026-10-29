@@ -12,6 +12,10 @@ export type EventMap = {
     bucket: Bucket;
     suggestedBucket: Bucket | null;
     overridden: boolean; // the user changed the suggested bucket
+    // Manual entries only (recurring ones omit all three; refactor-expense-entry D8).
+    usedChip?: boolean;
+    chipSource?: "history" | "starter" | null;
+    durationMs?: number; // screen open → submit, rounded to 100ms, 0–600000
   };
   expense_deleted: { wasRecurring: boolean };
   recurring_created: { bucket: Bucket; alsoThisMonth: boolean };

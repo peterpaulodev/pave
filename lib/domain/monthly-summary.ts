@@ -1,6 +1,6 @@
 import { BUCKET_ORDER, type Bucket } from "./buckets";
 import { daysInPeriod } from "./period";
-import { normalizeText } from "./suggest-bucket";
+import { cleanDescription, descriptionKey } from "./description-key";
 import { formatBRL } from "@/lib/money";
 
 export interface MonthlySummaryInput {
@@ -50,17 +50,6 @@ function day(date: string): number {
   return Number(date.slice(8, 10));
 }
 
-/** Description without digits and extra spaces, original case kept. */
-function cleanDescription(description: string): string {
-  return description.replace(/\d+/g, "").replace(/\s+/g, " ").trim();
-}
-
-function groupKey(description: string): string {
-  const key = normalizeText(cleanDescription(description));
-  // A description made only of digits would collapse to "": keep it distinct.
-  return key || normalizeText(description).trim();
-}
-
 function topDestinations(
   expenses: MonthlySummaryInput["wantsExpenses"]
 ): MonthlySummary["wantsDestinations"] {
@@ -68,7 +57,7 @@ function topDestinations(
 
   const groups = new Map<string, { totalCents: number; names: Map<string, number> }>();
   for (const { description, amountCents } of expenses) {
-    const key = groupKey(description);
+    const key = descriptionKey(description);
     const name = cleanDescription(description) || description.trim();
     const group = groups.get(key) ?? { totalCents: 0, names: new Map() };
     group.totalCents += amountCents;
