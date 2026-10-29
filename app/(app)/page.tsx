@@ -186,6 +186,7 @@ export default async function PainelPage({
             <Button
               variant="outline"
               render={<Link href="/contas-fixas" />}
+              nativeButton={false}
               className="min-h-11 self-start"
             >
               Cadastrar contas fixas
@@ -200,7 +201,7 @@ export default async function PainelPage({
             <p className="text-sm text-muted-foreground">
               Nenhum gasto registrado neste mês ainda.
             </p>
-            <Button render={<Link href="/novo" />} className="min-h-11">
+            <Button render={<Link href="/novo" />} nativeButton={false} className="min-h-11">
               Registrar primeiro gasto
             </Button>
           </CardContent>

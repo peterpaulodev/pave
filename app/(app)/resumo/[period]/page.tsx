@@ -136,7 +136,7 @@ export default async function ResumoPage({
       {startsHere ? (
         <StartMonthButton period={period} monthLabel={currentMonthLabel} />
       ) : (
-        <Button variant="outline" render={<Link href="/" />} className="min-h-11 w-full">
+        <Button variant="outline" render={<Link href="/" />} nativeButton={false} className="min-h-11 w-full">
           Voltar
         </Button>
       )}

@@ -198,4 +198,23 @@ describe("lançamento de gasto — sheet e tela cheia", () => {
 
     await context.close();
   });
+
+  it("painel sem avisos do Next (nativeButton), viewport-fit=cover e seletor de balde nas contas fixas", async () => {
+    const { page, context } = await open("/");
+    await page.waitForTimeout(3000); // the dev badge shows up after hydration
+    const badge = await page.evaluate(() => document.querySelector("nextjs-portal")?.shadowRoot?.textContent ?? "");
+    expect(badge).not.toMatch(/\d+ Issues?/);
+    await expect(page.locator('meta[name="viewport"]').getAttribute("content")).resolves.toContain("viewport-fit=cover");
+
+    await page.goto(`${BASE}/contas-fixas`);
+    await page.getByRole("button", { name: /Nova conta/ }).click();
+    await page.getByPlaceholder("Aluguel").fill("aluguel");
+    await expect(page.getByRole("radio", { name: /Necessidades/ }).getAttribute("aria-checked")).resolves.toBe("true");
+    await expect(page.getByText("sugerido").isVisible()).resolves.toBe(true);
+    expect(await page.getByText("como da última vez").count()).toBe(0);
+    await page.getByRole("radio", { name: /Investimentos/ }).click();
+    expect(await page.getByText("sugerido").count()).toBe(0); // a manual pick drops the mark
+
+    await context.close();
+  });
 });

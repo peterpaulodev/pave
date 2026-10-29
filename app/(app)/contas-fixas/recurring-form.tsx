@@ -12,7 +12,7 @@ import {
   updateRecurringAction,
   type RecurringFormInput,
 } from "@/actions/recurring";
-import { BucketToggle } from "@/components/bucket-toggle";
+import { BucketSelector } from "@/components/expense-entry/bucket-selector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -201,7 +201,12 @@ export function RecurringForm(props: Props) {
             </Field>
           </div>
 
-          <BucketToggle value={bucket} onChange={setPickedBucket} />
+          <BucketSelector
+            value={bucket}
+            // Only "sugerido": a bill has no "last time" history.
+            mark={pickedBucket === null && suggestBucket(description) ? "suggested" : null}
+            onChange={setPickedBucket}
+          />
 
           {props.mode === "create" && (
             <label className="flex min-h-11 items-center gap-3 text-sm">

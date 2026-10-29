@@ -313,7 +313,7 @@ export function ExpenseEntry({
           "flex flex-col gap-2 bg-background pt-3",
           inSheet
             ? "border-t px-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
-            : "sticky bottom-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom,0px))] pb-3 lg:bottom-0"
+            : "sticky bottom-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom,0px))] pb-3 lg:bottom-0 lg:pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
         )}
       >
         {error ? (
