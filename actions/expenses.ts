@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { getSessionUserOrRedirect } from "@/lib/auth/session";
 import {
   createExpense as createExpenseForUser,
@@ -34,6 +35,16 @@ const createExpenseSchema = z.object({
   chipSource: z.enum(["history", "starter"]).nullable().catch(null).default(null),
   durationMs: z.number().int().min(0).max(MAX_DURATION_MS).optional().catch(undefined),
 });
+
+/** Makes the dashboard refetch (also when the user returns to it with "back"
+ * from the entry sheet). A no-op outside a request, e.g. in integration tests. */
+function refreshDashboard() {
+  try {
+    revalidatePath("/");
+  } catch {
+    // not in a request scope
+  }
+}
 
 export type CreateExpenseInput = z.input<typeof createExpenseSchema>;
 
@@ -86,6 +97,7 @@ export async function createExpense(
     }),
   });
 
+  refreshDashboard();
   return { data: { id: expense.id } };
 }
 
@@ -96,5 +108,6 @@ export async function deleteExpense(
   const { id: userId } = await getSessionUserOrRedirect();
   const removed = await removeExpense(userId, expenseId);
   if (removed) trackEvent(userId, "expense_deleted", removed);
+  refreshDashboard();
   return { data: { deleted: removed !== null } };
 }

@@ -38,3 +38,11 @@ export function isDateAllowed(date: string, today: string): boolean {
   // Same-width ISO strings sort like the dates they spell.
   return date >= min && date <= max;
 }
+
+/** The calendar day before `date` ("YYYY-MM-DD"), string-in string-out. */
+export function previousDay(date: string): string {
+  if (!isRealDate(date)) throw new Error(`Data inválida: "${date}" (esperado YYYY-MM-DD).`);
+  const d = new Date(`${date}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}

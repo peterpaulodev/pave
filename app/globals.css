@@ -13,6 +13,13 @@
   /* Shell dimensions used by the header and bottom navigation. */
   --header-height: 3.5rem;
   --bottom-nav-height: 4rem;
+  /* Bucket colors (refactor-expense-entry D4). Used as text/icon/outline on
+     --background and on its own 12% tint: both ≥ 4.5:1 (checked in the
+     validation of tasks 3.1/6.4). */
+  --bucket-needs: oklch(0.49 0.17 258);
+  --bucket-wants: oklch(0.5 0.13 52);
+  --bucket-savings: oklch(0.47 0.11 160);
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -52,6 +59,9 @@
   --color-foreground: var(--foreground);
   --color-brand: var(--color-brand);
   --color-brand-foreground: var(--color-brand-foreground);
+  --color-bucket-needs: var(--bucket-needs);
+  --color-bucket-wants: var(--bucket-wants);
+  --color-bucket-savings: var(--bucket-savings);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
@@ -121,6 +131,10 @@ body {
 }
 
 .dark {
+  --bucket-needs: oklch(0.77 0.12 258);
+  --bucket-wants: oklch(0.8 0.13 65);
+  --bucket-savings: oklch(0.79 0.14 160);
+
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

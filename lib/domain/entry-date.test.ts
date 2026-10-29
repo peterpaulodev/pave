@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedDateRange, isDateAllowed, isYesterdayAllowed } from "./entry-date";
+import { allowedDateRange, isDateAllowed, isYesterdayAllowed, previousDay } from "./entry-date";
 
 describe("allowedDateRange", () => {
   it("meio do mês: do dia 1 até hoje", () => {
@@ -58,5 +58,17 @@ describe("isDateAllowed", () => {
     expect(isDateAllowed("21/10/2026", today)).toBe(false);
     expect(isDateAllowed("2026-02-30", "2026-02-28")).toBe(false);
     expect(isDateAllowed("2026-10-21T00:00:00Z", today)).toBe(false);
+  });
+});
+
+describe("previousDay", () => {
+  it("dia comum, virada de mês, de ano e fevereiro bissexto", () => {
+    expect(previousDay("2026-10-21")).toBe("2026-10-20");
+    expect(previousDay("2026-10-01")).toBe("2026-09-30");
+    expect(previousDay("2027-01-01")).toBe("2026-12-31");
+    expect(previousDay("2028-03-01")).toBe("2028-02-29");
+  });
+  it("data inválida lança erro", () => {
+    expect(() => previousDay("2026-02-30")).toThrow();
   });
 });

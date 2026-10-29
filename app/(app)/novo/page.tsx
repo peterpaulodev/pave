@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import { QuickEntryForm } from "./quick-entry-form";
+import { getSessionUserOrRedirect } from "@/lib/auth/session";
+import { getEntryContext } from "@/server/entry-context";
+import { ExpenseEntry } from "@/components/expense-entry/expense-entry";
 
 export const metadata: Metadata = {
   title: "Novo gasto · Pave",
@@ -12,12 +14,13 @@ export default async function NovoPage({
 }) {
   // Only an exact "notification" counts; anything else is a plain quick entry.
   const { src } = await searchParams;
-  const source = src === "notification" ? "notification" : "quick_entry";
+  const { id: userId } = await getSessionUserOrRedirect();
+  const context = await getEntryContext(userId);
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Novo gasto</h1>
-      <QuickEntryForm source={source} />
-    </div>
+    <ExpenseEntry
+      context={context}
+      source={src === "notification" ? "notification" : "quick_entry"}
+    />
   );
 }

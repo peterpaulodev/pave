@@ -9,8 +9,11 @@ export const dynamic = "force-dynamic";
 
 export default async function AppShellLayout({
   children,
+  sheet,
 }: {
   children: React.ReactNode;
+  // Parallel route: /novo opens here as a bottom sheet (app/(app)/@sheet).
+  sheet: React.ReactNode;
 }) {
   const { id: userId } = await getSessionUserOrRedirect();
   const settings = await getUserSettings(userId);
@@ -30,6 +33,7 @@ export default async function AppShellLayout({
         </div>
       </main>
       <BottomNav />
+      {sheet}
       <InstallPwaPrompt />
     </>
   );
